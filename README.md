@@ -6,7 +6,9 @@ Nazwy modeli i pól w schemacie są po angielsku ([`prisma/schema.prisma`](prism
 
 ## Uruchomienie
 
-Wymagania: Node.js, pnpm, Docker (opcjonalnie — skrypt `start-database.sh` uruchamia Postgresa).
+Wersja wdrożona jest dostępna w przeglądarce: [https://bd2p.vercel.app/](https://bd2p.vercel.app/).
+
+Wymagania (lokalnie): Node.js, pnpm, Docker (opcjonalnie — skrypt `start-database.sh` uruchamia Postgresa).
 
 1. Skopiuj env: `cp .env.example .env` i ustaw `DATABASE_URL` oraz `BETTER_AUTH_SECRET`.
 2. Uruchom Postgres (np. `./start-database.sh` albo własna instancja).
