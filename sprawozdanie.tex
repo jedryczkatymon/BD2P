@@ -1,0 +1,152 @@
+\documentclass[11pt, a4paper]{article}
+
+\usepackage[a4paper, margin=2.5cm]{geometry}
+\usepackage{fontspec}
+\usepackage[polish, bidi=basic, provide=*]{babel}
+\babelprovide[import, onchar=ids fonts]{polish}
+\babelfont{rm}{Noto Sans}
+
+% Pakiety pomocnicze
+\usepackage[hidelinks]{hyperref}
+\usepackage{booktabs}
+\usepackage{parskip}
+
+\begin{document}
+
+% --- Strona tytułowa ---
+\begin{titlepage}
+    \begin{center}
+        \vspace*{1cm}
+        
+        \Large \textbf{POLITECHNIKA WROCŁAWSKA}\\
+        \Large \textbf{WYDZIAŁ INFORMATYKI I TELEKOMUNIKACJI}
+        
+        \vspace{3cm}
+        
+        \Large \textbf{PROJEKT Z BAZ DANYCH}
+        
+        \vspace{1cm}
+        
+        \Huge \textbf{Baza danych książek}
+        
+        \vspace{3cm}
+    \end{center}
+    
+    \large
+    \begin{flushleft}
+        \textbf{Termin zajęć:} Piątek, 9:15–11:00\\[1cm]
+        
+\begin{tabular}{@{}p{8cm} p{7cm}@{}}
+            \textbf{Autor/Autorzy:} & \textbf{Prowadzący zajęcia:} \\
+            Tymon Jędryczka & dr inż. Roman Ptak, W4/K9 \\
+            Indeks: 284461 & \\
+            E-mail: 284461@student.pwr.edu.pl & \\[0.5cm] % Przerwa pomiędzy autorami
+            
+            Aleksander Gogół & \\
+            Indeks: 284526 & \\
+            E-mail: 284526@student.pwr.edu.pl & \\
+        \end{tabular}
+    \end{flushleft}
+    
+    \vfill
+    
+    \begin{center}
+        \large Wrocław, 2026 r.
+    \end{center}
+\end{titlepage}
+
+% --- Spis treści ---
+\tableofcontents
+\newpage
+
+% --- Treść właściwa ---
+
+\section{Wstęp}
+
+\subsection{Cel projektu}
+Celem projektu jest zaprojektowanie i implementacja relacyjnej bazy danych systemu wypożyczeń bibliotecznych oraz aplikacji webowej umożliwiającej pracę z tą bazą. System ma wspierać prowadzenie katalogu wydań, zarządzanie fizycznymi egzemplarzami, rejestrowanie wypożyczeń i zwrotów, obsługę rezerwacji oraz kontrolę dostępu zgodnie z rolami użytkowników.
+
+Kluczowym założeniem modelowym jest rozdzielenie opisu bibliograficznego wydania od egzemplarza fizycznego znajdującego się w bibliotece - wypożyczeniu podlega egzemplarz, a nie sam opis książki. Realizacja obejmuje bazę PostgreSQL, warstwę dostępu do danych opartą o Prisma ORM oraz aplikację webową w technologii Next.js.
+
+\subsection{Zakres projektu}
+Zakres prac obejmuje analizę wymagań, projekt modelu konceptualnego, logicznego i fizycznego bazy danych, a następnie implementację schematu wraz z ograniczeniami integralności oraz wybranymi mechanizmami przetwarzania danych (m.in.\ widoki, triggery, indeksy). Model obejmuje użytkowników biblioteki, autorów, wydawnictwa, kategorie, wydania książek, egzemplarze, wypożyczenia i rezerwacje, wraz z relacjami jeden-do-wielu oraz wiele-do-wielu (autorzy i kategorie przypisane do wydań).
+
+W zakresie funkcjonalnym przewidziano reguły biznesowe typowe dla wypożyczeń: limity liczby aktywnych wypożyczeń, blokadę kolejnych wypożyczeń przy pozycjach przeterminowanych, statusy egzemplarzy oraz rezerwacje wydań niedostępnych. Aplikacja użytkownika udostępnia role administratora (zarządzanie katalogiem i egzemplarzami, wypożyczenia i zwroty, obsługa użytkowników, monitoring przeterminowań) oraz czytelnika (przeglądanie katalogu, własne wypożyczenia i historia, rezerwacje, profil).
+
+Poza zakresem projektu pozostają m.in.\ płatności i kary finansowe, system recenzji, automatyczne rozpoznawanie okładek oraz integracje z zewnętrznymi katalogami bibliotecznymi.
+
+\section{Analiza wymagań}
+Wybór i opracowanie wstępnych założeń dotyczących wybranych tematów projektów.
+
+\subsection{Opis działania i schemat logiczny systemu}
+Opis słowny systemu i jego otoczenia.
+
+\subsection{Wymagania funkcjonalne}
+Opis funkcjonalności (możliwości) systemu, wyszczególnienie jego funkcji.
+
+\subsection{Wymagania niefunkcjonalne}
+\subsubsection{Wykorzystywane technologie i narzędzia}
+% Miejsce na treść
+\subsubsection{Wymagania dotyczące rozmiaru bazy danych}
+% Miejsce na treść
+\subsubsection{Wymagania dotyczące bezpieczeństwa systemu}
+% Miejsce na treść
+
+\subsection{Przyjęte założenia projektowe}
+% Miejsce na treść
+
+\section{Projekt systemu}
+Projekt i struktury bazy danych, mechanizmów zapewniania poprawności przechowywanych informacji, oraz kontroli dostępu do danych.
+
+\subsection{Projekt bazy danych}
+\subsubsection{Analiza rzeczywistości i uproszczony model konceptualny}
+\subsubsection{Model logiczny i normalizacja}
+\subsubsection{Model fizyczny i ograniczenia integralności danych}
+\subsubsection{Inne elementy schematu – mechanizmy przetwarzania danych}
+\subsubsection{Projekt mechanizmów bezpieczeństwa na poziomie bazy danych}
+
+\subsection{Projekt aplikacji użytkownika}
+\subsubsection{Architektura aplikacji i diagramy projektowe}
+\subsubsection{Interfejs graficzny i struktura menu}
+\subsubsection{Projekt wybranych funkcji systemu}
+\subsubsection{Metoda podłączania do bazy danych – integracja z bazą danych}
+\subsubsection{Projekt zabezpieczeń na poziomie aplikacji}
+
+\section{Implementacja systemu baz danych}
+Implementacja i testy bazy danych w wybranym systemie zarządzania bazą danych.
+
+\subsection{Tworzenie tabel i definiowanie ograniczeń}
+\subsection{Implementacja mechanizmów przetwarzania danych}
+\subsection{Implementacja uprawnień i innych zabezpieczeń}
+\subsection{Testowanie bazy danych na przykładowych danych}
+
+\section{Implementacja i testy aplikacji}
+Skrócone sprawozdanie z etapu implementacji i testowania aplikacji.
+
+\subsection{Instalacja i konfigurowanie systemu}
+\subsection{Instrukcja użytkowania aplikacji}
+\subsection{Testowanie opracowanych funkcji systemu}
+\subsection{Omówienie wybranych rozwiązań programistycznych}
+\subsubsection{Implementacja interfejsu dostępu do bazy danych}
+\subsubsection{Implementacja wybranych funkcjonalności systemu}
+\subsubsection{Implementacja mechanizmów bezpieczeństwa}
+
+\section{Podsumowanie i wnioski}
+% Miejsce na treść
+
+\newpage
+% --- Sekcje końcowe ---
+
+\addcontentsline{toc}{section}{Literatura}
+\begin{thebibliography}{9}
+    \bibitem{ksiazka} 
+    Nazwisko I., \textit{Tytuł książki}, Wydawnictwo, Rok wydania.
+\end{thebibliography}
+
+\addcontentsline{toc}{section}{Spis rysunków}
+\listoffigures
+
+\addcontentsline{toc}{section}{Spis tabel}
+\listoftables
+
+\end{document}

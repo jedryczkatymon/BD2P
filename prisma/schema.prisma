@@ -1,0 +1,231 @@
+// Library lending system — PostgreSQL schema for Prisma ORM + Better Auth.
+// Business rules that Prisma cannot express (e.g. partial unique index on active loans)
+// are documented in README.md and should be added via raw SQL migrations later.
+// Better Auth docs: https://better-auth.com/docs/concepts/database
+
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Role {
+  ADMIN
+  MEMBER
+}
+
+enum CopyStatus {
+  AVAILABLE
+  LOANED
+  LOST
+  MAINTENANCE
+}
+
+enum ReservationStatus {
+  PENDING
+  FULFILLED
+  CANCELLED
+}
+
+/// App user: Better Auth identity fields + library domain fields.
+/// Passwords live on Account.password (credential provider), not on User.
+model User {
+  id            String    @id
+  name          String
+  email         String
+  emailVerified Boolean   @default(false)
+  image         String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @default(now()) @updatedAt
+
+  firstName String?
+  lastName  String?
+  phone     String?
+  pesel     String?  @unique
+  role      Role     @default(MEMBER)
+  isActive  Boolean  @default(true)
+
+  sessions     Session[]
+  accounts     Account[]
+  loans        Loan[]
+  reservations Reservation[]
+
+  @@unique([email])
+  @@map("user")
+}
+
+model Session {
+  id        String   @id
+  expiresAt DateTime
+  token     String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  ipAddress String?
+  userAgent String?
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([token])
+  @@map("session")
+}
+
+model Account {
+  id                    String    @id
+  accountId             String
+  providerId            String
+  userId                String
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accessToken           String?
+  refreshToken          String?
+  idToken               String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  password              String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  @@map("account")
+}
+
+model Verification {
+  id         String   @id
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @default(now()) @updatedAt
+
+  @@map("verification")
+}
+
+model Author {
+  id        String   @id @default(cuid())
+  firstName String
+  lastName  String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  books BookAuthor[]
+}
+
+model Publisher {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  books Book[]
+}
+
+model Category {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  books BookCategory[]
+}
+
+/// Bibliographic edition (not a physical item). Physical stock lives in Copy.
+model Book {
+  id              String   @id @default(cuid())
+  title           String
+  ean             String   @unique
+  pageCount       Int
+  publicationYear Int
+  publisherId     String
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  publisher    Publisher      @relation(fields: [publisherId], references: [id])
+  authors      BookAuthor[]
+  categories   BookCategory[]
+  copies       Copy[]
+  reservations Reservation[]
+
+  @@index([publisherId])
+  @@index([title])
+}
+
+/// Many-to-many Book ↔ Author with authorship order (1 = primary author).
+model BookAuthor {
+  id          String @id @default(cuid())
+  bookId      String
+  authorId    String
+  authorOrder Int
+
+  book   Book   @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  author Author @relation(fields: [authorId], references: [id], onDelete: Cascade)
+
+  @@unique([bookId, authorId])
+  @@index([authorId])
+}
+
+/// Many-to-many Book ↔ Category.
+model BookCategory {
+  bookId     String
+  categoryId String
+
+  book     Book     @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  category Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  @@id([bookId, categoryId])
+  @@index([categoryId])
+}
+
+/// Physical library item that can be loaned.
+model Copy {
+  id          String     @id @default(cuid())
+  bookId      String
+  inventoryNo String     @unique
+  status      CopyStatus @default(AVAILABLE)
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  book  Book   @relation(fields: [bookId], references: [id], onDelete: Restrict)
+  loans Loan[]
+
+  @@index([bookId])
+  @@index([status])
+}
+
+/// Loan of a Copy to a User. Active loan <=> returnedAt IS NULL.
+/// Enforce at most one active loan per copy with a partial unique index in SQL:
+///   CREATE UNIQUE INDEX loan_one_active_per_copy ON "Loan" ("copyId") WHERE "returnedAt" IS NULL;
+model Loan {
+  id         String    @id @default(cuid())
+  copyId     String
+  userId     String
+  loanedAt   DateTime  @default(now())
+  dueAt      DateTime
+  returnedAt DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  copy Copy @relation(fields: [copyId], references: [id], onDelete: Restrict)
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@index([userId])
+  @@index([copyId])
+  @@index([dueAt])
+}
+
+/// Queue reservation for a Book edition when no Copy is AVAILABLE.
+model Reservation {
+  id        String            @id @default(cuid())
+  bookId    String
+  userId    String
+  status    ReservationStatus @default(PENDING)
+  createdAt DateTime          @default(now())
+  updatedAt DateTime          @updatedAt
+
+  book Book @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([bookId, status])
+  @@index([userId, status])
+}
