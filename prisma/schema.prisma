@@ -1,6 +1,4 @@
 // Library lending system — PostgreSQL schema for Prisma ORM + Better Auth.
-// Business rules that Prisma cannot express (e.g. partial unique index on active loans)
-// are documented in README.md and should be added via raw SQL migrations later.
 // Better Auth docs: https://better-auth.com/docs/concepts/database
 
 generator client {
@@ -13,7 +11,7 @@ datasource db {
 }
 
 enum Role {
-  ADMIN
+  LIBRARIAN
   MEMBER
 }
 
@@ -32,6 +30,7 @@ enum ReservationStatus {
 
 /// App user: Better Auth identity fields + library domain fields.
 /// Passwords live on Account.password (credential provider), not on User.
+/// `name` is required by Better Auth and kept as a derived field: firstName + lastName.
 model User {
   id            String    @id
   name          String
@@ -41,10 +40,11 @@ model User {
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @default(now()) @updatedAt
 
-  firstName String?
-  lastName  String?
+  firstName String
+  lastName  String
   phone     String?
-  pesel     String?  @unique
+  /// Required, 11 digits, immutable after registration (enforced in app + DB CHECK).
+  pesel     String   @unique
   role      Role     @default(MEMBER)
   isActive  Boolean  @default(true)
 

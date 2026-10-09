@@ -27,7 +27,7 @@
         
         \vspace{1cm}
         
-        \Huge \textbf{Baza danych książek}
+        \Huge \textbf{Baza danych lokalnej biblioteki}
         
         \vspace{3cm}
     \end{center}
@@ -64,14 +64,10 @@
 \section{Wstęp}
 
 \subsection{Cel projektu}
-Celem projektu jest zaprojektowanie i implementacja relacyjnej bazy danych systemu wypożyczeń bibliotecznych oraz aplikacji webowej umożliwiającej pracę z tą bazą. System ma wspierać prowadzenie katalogu wydań, zarządzanie fizycznymi egzemplarzami, rejestrowanie wypożyczeń i zwrotów, obsługę rezerwacji oraz kontrolę dostępu zgodnie z rolami użytkowników.
-
-Kluczowym założeniem modelowym jest rozdzielenie opisu bibliograficznego wydania od egzemplarza fizycznego znajdującego się w bibliotece - wypożyczeniu podlega egzemplarz, a nie sam opis książki. Realizacja obejmuje bazę PostgreSQL, warstwę dostępu do danych opartą o Prisma ORM oraz aplikację webową w technologii Next.js.
+Celem projektu jest zaprojektowanie i implementacja systemu informatycznego małej biblioteki miejskiej -- relacyjnej bazy danych systemu wypożyczeń bibliotecznych oraz aplikacji webowej umożliwiającej pracę z tą bazą. System ma wspierać prowadzenie katalogu wydań, zarządzanie fizycznymi egzemplarzami, rejestrowanie wypożyczeń i zwrotów, obsługę rezerwacji oraz kontrolę dostępu zgodnie z rolami użytkowników.
 
 \subsection{Zakres projektu}
-Zakres prac obejmuje analizę wymagań, projekt modelu konceptualnego, logicznego i fizycznego bazy danych, a następnie implementację schematu wraz z ograniczeniami integralności oraz wybranymi mechanizmami przetwarzania danych (m.in.\ widoki, triggery, indeksy). Model obejmuje użytkowników biblioteki, autorów, wydawnictwa, kategorie, wydania książek, egzemplarze, wypożyczenia i rezerwacje, wraz z relacjami jeden-do-wielu oraz wiele-do-wielu (autorzy i kategorie przypisane do wydań).
-
-W zakresie funkcjonalnym przewidziano reguły biznesowe typowe dla wypożyczeń: limity liczby aktywnych wypożyczeń, blokadę kolejnych wypożyczeń przy pozycjach przeterminowanych, statusy egzemplarzy oraz rezerwacje wydań niedostępnych. Aplikacja użytkownika udostępnia role administratora (zarządzanie katalogiem i egzemplarzami, wypożyczenia i zwroty, obsługa użytkowników, monitoring przeterminowań) oraz czytelnika (przeglądanie katalogu, własne wypożyczenia i historia, rezerwacje, profil).
+Zakres prac obejmuje analizę wymagań, projekt modelu konceptualnego, logicznego i fizycznego bazy danych, implementację schematu wraz z ograniczeniami integralności oraz wybranymi mechanizmami przetwarzania danych, a także aplikację webową umożliwiającą pracę z bazą.
 
 Poza zakresem projektu pozostają m.in.\ płatności i kary finansowe, system recenzji, automatyczne rozpoznawanie okładek oraz integracje z zewnętrznymi katalogami bibliotecznymi.
 
@@ -79,21 +75,60 @@ Poza zakresem projektu pozostają m.in.\ płatności i kary finansowe, system re
 Wybór i opracowanie wstępnych założeń dotyczących wybranych tematów projektów.
 
 \subsection{Opis działania i schemat logiczny systemu}
-Opis słowny systemu i jego otoczenia.
+System obsługuje procesy typowe dla małej biblioteki miejskiej: utrzymanie katalogu wydań, ewidencję fizycznych egzemplarzy oraz rejestrację wypożyczeń i rezerwacji. W otoczeniu systemu występują pracownicy biblioteki (bibliotekarze) oraz czytelnicy korzystający z katalogu i usług wypożyczeń.
+
+Przedmiotem modelowania są użytkownicy biblioteki, autorzy, wydawnictwa, kategorie, wydania książek, egzemplarze, wypożyczenia i rezerwacje, wraz z relacjami jeden-do-wielu oraz wiele-do-wielu (autorzy i kategorie przypisane do wydań).
 
 \subsection{Wymagania funkcjonalne}
-Opis funkcjonalności (możliwości) systemu, wyszczególnienie jego funkcji.
+W systemie przewidziano reguły biznesowe typowe dla wypożyczeń: limity liczby aktywnych wypożyczeń, blokadę kolejnych wypożyczeń przy pozycjach przeterminowanych, statusy egzemplarzy oraz rezerwacje wydań niedostępnych.
+
+Dostęp do systemu jest zróżnicowany względem stanu uwierzytelnienia. Katalog wydań (wyszukiwanie, filtry, szczegóły pozycji oraz zagregowana dostępność egzemplarzy) jest dostępny bez logowania. Wypożyczenia i rezerwacje wymagają uwierzytelnionego konta czytelnika.
+
+Aplikacja użytkownika wyróżnia następujące poziomy dostępu:
+\begin{itemize}
+    \item gość (niezalogowany) -- przeglądanie katalogu wydań oraz widoczność dostępności (liczba egzemplarzy o statusie dostępny);
+    \item czytelnik (zalogowany) -- j.w.\ oraz własne wypożyczenia i historia, składanie i anulowanie rezerwacji, edycja profilu;
+    \item bibliotekarz -- zarządzanie katalogiem i egzemplarzami, wypożyczenia i zwroty, obsługa użytkowników, monitoring przeterminowań (panel dostępny wyłącznie po zalogowaniu).
+\end{itemize}
 
 \subsection{Wymagania niefunkcjonalne}
 \subsubsection{Wykorzystywane technologie i narzędzia}
-% Miejsce na treść
+Realizacja opiera się na bazie PostgreSQL jako systemie zarządzania bazą danych, warstwie dostępu do danych opartej o Prisma ORM oraz aplikacji webowej w technologii Next.js.
+
 \subsubsection{Wymagania dotyczące rozmiaru bazy danych}
-% Miejsce na treść
+System projektowany jest z myślą o małej, lokalnej bibliotece miejskiej. Przyjęte szacunki liczności zbiorów mają charakter \textbf{orientacyjny}: wynikają z typowej skali takiej placówki (kilka tysięcy egzemplarzy, setki zarejestrowanych czytelników, kilkuset autorów w katalogu), a nie z ograniczeń wydajnościowych PostgreSQL ani warstwy aplikacyjnej. W praktyce baza i aplikacja mogą obsłużyć istotnie większe wolumeny danych bez zmiany modelu.
+
+Za reprezentację tych założeń ilościowych uznaje się przykładowe dane testowe generowane skryptem seed (\texttt{prisma/seed.ts}). Służą one do demonstracji działania systemu oraz testów funkcjonalnych; nie stanowią limitu pojemności ani wymagania wydajnościowego.
+
+\begin{table}[ht]
+\centering
+\caption{Orientacyjne liczności zbiorów dla lokalnej biblioteki (reprezentowane w seedzie)}
+\label{tab:rozmiar-bazy}
+\begin{tabular}{@{}ll@{}}
+\toprule
+\textbf{Encja} & \textbf{Orientacyjna liczba} \\
+\midrule
+Bibliotekarze & 2 \\
+Zarejestrowani czytelnicy & 250 \\
+Autorzy & kilkaset ($\sim$400) \\
+Wydawnictwa & kilkadziesiąt ($\sim$50) \\
+Kategorie & $\sim$20 \\
+Wydania (\texttt{Book}) & $\sim$2000 \\
+Egzemplarze (\texttt{Copy}) & kilka tysięcy (1--4 na wydanie) \\
+Historia wypożyczeń / rezerwacje & rząd tysięcy / dziesiątek \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Przy wzroście realnej biblioteki powyższe liczby mogą być większe. Model danych oraz mechanizmy (indeksy, limity biznesowe wypożyczeń) nie zakładają sztywnego górnego limitu równego wolumenowi seeda.
+
 \subsubsection{Wymagania dotyczące bezpieczeństwa systemu}
-% Miejsce na treść
+System rozdziela publiczny odczyt katalogu od chronionych operacji transakcyjnych. Przeglądanie katalogu nie wymaga uwierzytelnienia. Wypożyczenia, rezerwacje, dane profilu oraz funkcje bibliotekarza są dostępne wyłącznie po zalogowaniu; dane wrażliwe innych użytkowników nie są eksponowane w widoku publicznym.
 
 \subsection{Przyjęte założenia projektowe}
-% Miejsce na treść
+Kluczowym założeniem modelowym jest rozdzielenie opisu bibliograficznego wydania od egzemplarza fizycznego znajdującego się w bibliotece -- wypożyczeniu podlega egzemplarz, a nie sam opis książki.
+
+Przyjęto model dostępu typowy dla biblioteki publicznej (OPAC): katalog jest usługą publiczną dostępną bez konta, natomiast konto czytelnika jest wymagane dopiero przy akcjach na koncie -- wypożyczeniu i rezerwacji. Publicznie udostępniany jest opis bibliograficzny oraz zagregowana dostępność; nie ujawnia się numerów inwentarzowych egzemplarzy ani danych innych czytelników.
 
 \section{Projekt systemu}
 Projekt i struktury bazy danych, mechanizmów zapewniania poprawności przechowywanych informacji, oraz kontroli dostępu do danych.
@@ -111,6 +146,7 @@ Projekt i struktury bazy danych, mechanizmów zapewniania poprawności przechowy
 \subsubsection{Projekt wybranych funkcji systemu}
 \subsubsection{Metoda podłączania do bazy danych – integracja z bazą danych}
 \subsubsection{Projekt zabezpieczeń na poziomie aplikacji}
+Na poziomie aplikacji kontrola dostępu opiera się na sesji Better Auth oraz procedurach tRPC: odczyt katalogu realizowany jest jako procedura publiczna (\texttt{publicProcedure}), natomiast wypożyczenia i rezerwacje -- jako procedury chronione (\texttt{protectedProcedure}), wymagające ważnej sesji użytkownika. Panel bibliotekarza jest dodatkowo ograniczony do roli \texttt{LIBRARIAN}.
 
 \section{Implementacja systemu baz danych}
 Implementacja i testy bazy danych w wybranym systemie zarządzania bazą danych.

@@ -132,3 +132,28 @@ export const protectedProcedure = t.procedure
 			},
 		});
 	});
+
+/**
+ * Librarian-only procedure
+ *
+ * Requires an authenticated session with role LIBRARIAN.
+ */
+export const librarianProcedure = t.procedure
+	.use(timingMiddleware)
+	.use(({ ctx, next }) => {
+		if (!ctx.session?.user) {
+			throw new TRPCError({ code: "UNAUTHORIZED" });
+		}
+		const role = (ctx.session.user as { role?: string }).role;
+		if (role !== "LIBRARIAN") {
+			throw new TRPCError({
+				code: "FORBIDDEN",
+				message: "Dostęp tylko dla bibliotekarza",
+			});
+		}
+		return next({
+			ctx: {
+				session: { ...ctx.session, user: ctx.session.user },
+			},
+		});
+	});
