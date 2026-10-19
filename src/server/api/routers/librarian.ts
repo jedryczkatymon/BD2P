@@ -1,4 +1,5 @@
 import { TRPCError } from "@trpc/server";
+import { APIError } from "better-auth/api";
 import { z } from "zod";
 import type { AuthorName } from "~/lib/library-rules";
 import {
@@ -8,7 +9,9 @@ import {
 	LOAN_DAYS,
 	parseAuthorsText,
 } from "~/lib/library-rules";
+import { isValidPesel, normalizePesel } from "~/lib/pesel";
 import { createTRPCRouter, librarianProcedure } from "~/server/api/trpc";
+import { auth } from "~/server/better-auth";
 import type { Prisma } from "../../../../generated/prisma/client";
 
 const pageSizeSchema = z.union([z.literal(50), z.literal(100), z.literal(200)]);
@@ -1276,6 +1279,92 @@ export const librarianRouter = createTRPCRouter({
 				data: { isActive: input.isActive },
 			});
 			return { ok: true as const };
+		}),
+
+	createMember: librarianProcedure
+		.input(
+			z.object({
+				firstName: z.string().trim().min(1).max(100),
+				lastName: z.string().trim().min(1).max(100),
+				email: z.string().trim().toLowerCase().email(),
+				phone: z
+					.string()
+					.trim()
+					.max(32)
+					.optional()
+					.transform((value) => (value ? value : undefined)),
+				pesel: z.string().transform(normalizePesel),
+				password: z.string().min(8).max(128),
+			}),
+		)
+		.mutation(async ({ ctx, input }) => {
+			if (!isValidPesel(input.pesel)) {
+				throw new TRPCError({
+					code: "BAD_REQUEST",
+					message: "PESEL musi składać się z 11 cyfr",
+				});
+			}
+
+			const existing = await ctx.db.user.findUnique({
+				where: { email: input.email },
+				select: { id: true },
+			});
+			if (existing) {
+				throw new TRPCError({
+					code: "BAD_REQUEST",
+					message: "Konto z tym adresem e-mail już istnieje",
+				});
+			}
+
+			// Publiczna rejestracja jest wyłączona (disableSignUp), więc konto
+			// tworzymy przez wewnętrzny adapter Better Auth — tak jak robi to
+			// /sign-up/email. createUser uruchamia databaseHooks (walidacja PESEL).
+			const authCtx = await auth.$context;
+			const hash = await authCtx.password.hash(input.password);
+
+			let userId: string;
+			try {
+				const user = await authCtx.internalAdapter.createUser(
+					{
+						name: `${input.firstName} ${input.lastName}`,
+						email: input.email,
+						emailVerified: false,
+						firstName: input.firstName,
+						lastName: input.lastName,
+						phone: input.phone,
+						pesel: input.pesel,
+					},
+					{ method: "email-password" },
+				);
+				userId = user.id;
+			} catch (error) {
+				if (error instanceof APIError) {
+					throw new TRPCError({ code: "BAD_REQUEST", message: error.message });
+				}
+				if (isUniqueViolation(error)) {
+					throw new TRPCError({
+						code: "BAD_REQUEST",
+						message:
+							"Konto z tym adresem e-mail lub numerem PESEL już istnieje",
+					});
+				}
+				throw error;
+			}
+
+			try {
+				await authCtx.internalAdapter.linkAccount({
+					userId,
+					providerId: "credential",
+					accountId: userId,
+					password: hash,
+				});
+			} catch (error) {
+				// Bez konta credential użytkownik nie mógłby się zalogować.
+				await ctx.db.user.delete({ where: { id: userId } });
+				throw error;
+			}
+
+			return { ok: true as const, userId };
 		}),
 
 	findMemberByEmail: librarianProcedure

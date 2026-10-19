@@ -2,14 +2,32 @@
 
 \usepackage[a4paper, margin=2.5cm]{geometry}
 \usepackage{fontspec}
-\usepackage[polish, bidi=basic, provide=*]{babel}
-\babelprovide[import, onchar=ids fonts]{polish}
-\babelfont{rm}{Noto Sans}
+\usepackage[polish]{babel}
+
+\IfFontExistsTF{Noto Sans}{\setmainfont{Noto Sans}}{%
+  \IfFontExistsTF{TeX Gyre Heros}{\setmainfont{TeX Gyre Heros}}{\setmainfont{Arial}}}
 
 % Pakiety pomocnicze
 \usepackage[hidelinks]{hyperref}
 \usepackage{booktabs}
 \usepackage{parskip}
+\usepackage{graphicx}
+\usepackage{float}
+\usepackage{enumitem}
+\usepackage{microtype}
+\usepackage{xurl}
+\setcounter{tocdepth}{3}
+\setcounter{secnumdepth}{3}
+\urlstyle{same}
+\setlist{topsep=3pt,itemsep=2pt,parsep=0pt}
+\setlength{\parskip}{3pt plus 1pt}
+\setlength{\emergencystretch}{2em}
+\setcounter{topnumber}{3}
+\renewcommand{\topfraction}{0.9}
+\renewcommand{\textfraction}{0.08}
+\renewcommand{\floatpagefraction}{0.7}
+% Kompilator Overleaf: LuaLaTeX (11 pt; marginesy 2,5 cm).
+
 
 \begin{document}
 
@@ -23,7 +41,7 @@
         
         \vspace{3cm}
         
-        \Large \textbf{PROJEKT Z BAZ DANYCH}
+        \Large \textbf{PROJEKT Z BAZ DANYCH 2}
         
         \vspace{1cm}
         
@@ -44,7 +62,11 @@
             
             Aleksander Gogół & \\
             Indeks: 284526 & \\
-            E-mail: 284526@student.pwr.edu.pl & \\
+            E-mail: 284526@student.pwr.edu.pl & \\[0.5cm]
+
+            Norbert Antonovitch & \\
+            Indeks: 276209 & \\
+            E-mail: 276209@student.pwr.edu.pl & \\
         \end{tabular}
     \end{flushleft}
     
@@ -64,108 +86,1022 @@
 \section{Wstęp}
 
 \subsection{Cel projektu}
-Celem projektu jest zaprojektowanie i implementacja systemu informatycznego małej biblioteki miejskiej -- relacyjnej bazy danych systemu wypożyczeń bibliotecznych oraz aplikacji webowej umożliwiającej pracę z tą bazą. System ma wspierać prowadzenie katalogu wydań, zarządzanie fizycznymi egzemplarzami, rejestrowanie wypożyczeń i zwrotów, obsługę rezerwacji oraz kontrolę dostępu zgodnie z rolami użytkowników.
+
+
+Celem projektu jest relacyjna baza danych i aplikacja webowa wspomagająca małą bibliotekę miejską: spójna ewidencja zbiorów oraz obsługa wypożyczeń, zwrotów i rezerwacji zgodnie z uprawnieniami użytkownika.
 
 \subsection{Zakres projektu}
-Zakres prac obejmuje analizę wymagań, projekt modelu konceptualnego, logicznego i fizycznego bazy danych, implementację schematu wraz z ograniczeniami integralności oraz wybranymi mechanizmami przetwarzania danych, a także aplikację webową umożliwiającą pracę z bazą.
 
-Poza zakresem projektu pozostają m.in.\ płatności i kary finansowe, system recenzji, automatyczne rozpoznawanie okładek oraz integracje z zewnętrznymi katalogami bibliotecznymi.
+
+Prace obejmują analizę wymagań, model konceptualny, logiczny i fizyczny, ograniczenia integralności, przetwarzanie danych oraz aplikację dostępową. System udostępnia katalog, zarządzanie wydaniami i egzemplarzami, obieg zbiorów, zakładanie kont czytelników przez bibliotekarza, uwierzytelnianie, własne konto oraz zmianę aktywności kont czytelników. Dane obejmują użytkowników, autorów, wydawnictwa, kategorie, wydania, egzemplarze, wypożyczenia, rezerwacje i uwierzytelnianie. Wyłączenia zakresu zestawiono w punkcie~\ref{subsec:zalozenia-ograniczenia}.
 
 \section{Analiza wymagań}
-Wybór i opracowanie wstępnych założeń dotyczących wybranych tematów projektów.
+\label{sec:analiza-wymagan}
 
-\subsection{Opis działania i schemat logiczny systemu}
-System obsługuje procesy typowe dla małej biblioteki miejskiej: utrzymanie katalogu wydań, ewidencję fizycznych egzemplarzy oraz rejestrację wypożyczeń i rezerwacji. W otoczeniu systemu występują pracownicy biblioteki (bibliotekarze) oraz czytelnicy korzystający z katalogu i usług wypożyczeń.
 
-Przedmiotem modelowania są użytkownicy biblioteki, autorzy, wydawnictwa, kategorie, wydania książek, egzemplarze, wypożyczenia i rezerwacje, wraz z relacjami jeden-do-wielu oraz wiele-do-wielu (autorzy i kategorie przypisane do wydań).
 
-\subsection{Wymagania funkcjonalne}
-W systemie przewidziano reguły biznesowe typowe dla wypożyczeń: limity liczby aktywnych wypożyczeń, blokadę kolejnych wypożyczeń przy pozycjach przeterminowanych, statusy egzemplarzy oraz rezerwacje wydań niedostępnych.
+\subsection{Opis działania i zakres systemu}
+\label{subsec:opis-systemu}
 
-Dostęp do systemu jest zróżnicowany względem stanu uwierzytelnienia. Katalog wydań (wyszukiwanie, filtry, szczegóły pozycji oraz zagregowana dostępność egzemplarzy) jest dostępny bez logowania. Wypożyczenia i rezerwacje wymagają uwierzytelnionego konta czytelnika.
+Bibliotekarz prowadzi katalog, zakłada konta czytelników i rejestruje udostępnianie zbiorów; fizyczne wydanie i przyjęcie książki odbywa się poza systemem. Czytelnik loguje się na konto założone przez bibliotekarza, przegląda katalog i własne konto oraz składa rezerwacje.
 
-Aplikacja użytkownika wyróżnia następujące poziomy dostępu:
-\begin{itemize}
-    \item gość (niezalogowany) -- przeglądanie katalogu wydań oraz widoczność dostępności (liczba egzemplarzy o statusie dostępny);
-    \item czytelnik (zalogowany) -- j.w.\ oraz własne wypożyczenia i historia, składanie i anulowanie rezerwacji, edycja profilu;
-    \item bibliotekarz -- zarządzanie katalogiem i egzemplarzami, wypożyczenia i zwroty, obsługa użytkowników, monitoring przeterminowań (panel dostępny wyłącznie po zalogowaniu).
-\end{itemize}
+Opis wydania (\texttt{Book}) obejmuje tytuł, EAN, rok, liczbę stron, wydawnictwo, autorów i kategorie. Fizyczny egzemplarz (\texttt{Copy}) ma unikalny numer inwentarzowy i status: dostępny, wypożyczony, zagubiony lub konserwacja. Wydanie może nie mieć egzemplarzy albo mieć ich wiele.
 
-\subsection{Wymagania niefunkcjonalne}
-\subsubsection{Wykorzystywane technologie i narzędzia}
-Realizacja opiera się na bazie PostgreSQL jako systemie zarządzania bazą danych, warstwie dostępu do danych opartej o Prisma ORM oraz aplikacji webowej w technologii Next.js.
+Wypożyczenie wiąże użytkownika z egzemplarzem oraz przechowuje datę wypożyczenia, termin i opcjonalną datę zwrotu. Brak zwrotu oznacza aktywność, a dodatkowo przekroczony termin --- przeterminowanie. Rezerwacja dotyczy wydania bez dostępnych egzemplarzy; pozostaje oczekująca do anulowania lub realizacji przez wypożyczenie. Nie przydziela konkretnej sztuki.
 
-\subsubsection{Wymagania dotyczące rozmiaru bazy danych}
-System projektowany jest z myślą o małej, lokalnej bibliotece miejskiej. Przyjęte szacunki liczności zbiorów mają charakter \textbf{orientacyjny}: wynikają z typowej skali takiej placówki (kilka tysięcy egzemplarzy, setki zarejestrowanych czytelników, kilkuset autorów w katalogu), a nie z ograniczeń wydajnościowych PostgreSQL ani warstwy aplikacyjnej. W praktyce baza i aplikacja mogą obsłużyć istotnie większe wolumeny danych bez zmiany modelu.
+\subsection{Użytkownicy i scenariusze użytkowania}
+\label{subsec:uzytkownicy-scenariusze}
 
-Za reprezentację tych założeń ilościowych uznaje się przykładowe dane testowe generowane skryptem seed (\texttt{prisma/seed.ts}). Służą one do demonstracji działania systemu oraz testów funkcjonalnych; nie stanowią limitu pojemności ani wymagania wydajnościowego.
+Gość oznacza brak sesji; konta mają rolę \texttt{MEMBER} lub \texttt{LIBRARIAN}. Samodzielna rejestracja nie jest dostępna: konto czytelnika zakłada bibliotekarz. Obie role korzystają z własnego profilu, wypożyczeń i rezerwacji. Operatorem wypożyczenia jest bibliotekarz, natomiast odbiorca obu ról nie musi być zalogowany.
 
-\begin{table}[ht]
+\begin{table}[htbp]
 \centering
-\caption{Orientacyjne liczności zbiorów dla lokalnej biblioteki (reprezentowane w seedzie)}
-\label{tab:rozmiar-bazy}
-\begin{tabular}{@{}ll@{}}
+\caption{Poziomy dostępu do funkcji systemu. Opracowanie własne.}
+\label{tab:poziomy-dostepu}
+\begin{tabular}{@{}p{0.27\linewidth}p{0.65\linewidth}@{}}
 \toprule
-\textbf{Encja} & \textbf{Orientacyjna liczba} \\
+\textbf{Grupa użytkowników} & \textbf{Zakres dostępu} \\
 \midrule
-Bibliotekarze & 2 \\
-Zarejestrowani czytelnicy & 250 \\
-Autorzy & kilkaset ($\sim$400) \\
-Wydawnictwa & kilkadziesiąt ($\sim$50) \\
-Kategorie & $\sim$20 \\
-Wydania (\texttt{Book}) & $\sim$2000 \\
-Egzemplarze (\texttt{Copy}) & kilka tysięcy (1--4 na wydanie) \\
-Historia wypożyczeń / rezerwacje & rząd tysięcy / dziesiątek \\
+Gość niezalogowany &
+Publiczny katalog, wyszukiwanie, filtry, szczegóły wydania
+i zbiorcza informacja o egzemplarzach; formularz logowania
+na konto założone przez bibliotekarza. \\
+
+Użytkownik zalogowany &
+Funkcje publiczne, własny profil, aktywne wypożyczenia,
+historia zwrotów oraz własne oczekujące rezerwacje.
+Składanie rezerwacji podlega dodatkowym warunkom biznesowym. \\
+
+Bibliotekarz &
+Funkcje użytkownika zalogowanego oraz panel obsługi
+wypożyczeń, zwrotów, rezerwacji, katalogu, egzemplarzy,
+kategorii oraz zakładania i aktywności kont czytelników. \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-Przy wzroście realnej biblioteki powyższe liczby mogą być większe. Model danych oraz mechanizmy (indeksy, limity biznesowe wypożyczeń) nie zakładają sztywnego górnego limitu równego wolumenowi seeda.
+\begin{description}
+\item[SU-01. Wyszukanie wydania.] Gość lub użytkownik podaje frazę i filtry, otrzymuje wyniki z dostępnością i otwiera szczegóły; brak dopasowań daje pustą listę.
+\item[SU-02. Złożenie rezerwacji.] Zalogowany użytkownik wybiera wydanie bez dostępnych egzemplarzy. Nieaktywne konto lub własna oczekująca rezerwacja powodują odmowę; w przeciwnym razie powstaje zgłoszenie.
+\item[SU-03. Utworzenie wypożyczenia.] Bibliotekarz wskazuje odbiorcę i egzemplarz. Po sprawdzeniu istnienia, aktywności konta, limitu, zaległości i dostępności system zapisuje wypożyczenie, termin i status; odmowa zawiera przyczynę.
+\item[SU-04. Rejestracja zwrotu.] Bibliotekarz kończy aktywne wypożyczenie. System zapisuje zwrot i dostępność, zachowując ewentualne zagubienie lub konserwację. Ponowny zwrot jest odrzucany.
+\item[SU-05. Obsługa rezerwacji.] Bibliotekarz anuluje oczekujące zgłoszenie lub realizuje je przez wypożyczenie dostępnego egzemplarza, po kontroli odbiorcy. Zwrot nie uruchamia realizacji automatycznej.
+\item[SU-06. Zarządzanie katalogiem.] Bibliotekarz zapisuje wydanie z autorami, wydawnictwem i kategoriami, a osobno dodaje egzemplarze. System sprawdza dane, identyfikatory i ograniczenia usuwania.
+\item[SU-07. Założenie konta czytelnika.] Bibliotekarz wprowadza dane czytelnika i hasło początkowe, które przekazuje mu poza systemem. Błędny format lub zajęty e-mail albo PESEL powodują odmowę; w przeciwnym razie powstaje aktywne konto \texttt{MEMBER}, na które czytelnik może się zalogować.
+\end{description}
 
-\subsubsection{Wymagania dotyczące bezpieczeństwa systemu}
-System rozdziela publiczny odczyt katalogu od chronionych operacji transakcyjnych. Przeglądanie katalogu nie wymaga uwierzytelnienia. Wypożyczenia, rezerwacje, dane profilu oraz funkcje bibliotekarza są dostępne wyłącznie po zalogowaniu; dane wrażliwe innych użytkowników nie są eksponowane w widoku publicznym.
+\subsection{Wymagania funkcjonalne}
+\label{subsec:wymagania-funkcjonalne}
 
-\subsection{Przyjęte założenia projektowe}
-Kluczowym założeniem modelowym jest rozdzielenie opisu bibliograficznego wydania od egzemplarza fizycznego znajdującego się w bibliotece -- wypożyczeniu podlega egzemplarz, a nie sam opis książki.
+Identyfikatory \texttt{WF} określają funkcje, warunki wykonania i wyniki operacji.
 
-Przyjęto model dostępu typowy dla biblioteki publicznej (OPAC): katalog jest usługą publiczną dostępną bez konta, natomiast konto czytelnika jest wymagane dopiero przy akcjach na koncie -- wypożyczeniu i rezerwacji. Publicznie udostępniany jest opis bibliograficzny oraz zagregowana dostępność; nie ujawnia się numerów inwentarzowych egzemplarzy ani danych innych czytelników.
+\subsubsection{Katalog i wyszukiwanie}
+
+\begin{description}
+    \item[WF-01. Publiczny katalog.]
+Katalog bez logowania prezentuje tytuły, autorów i liczby dostępnych egzemplarzy.
+\item[WF-02. Wyszukiwanie.]
+Wyszukiwanie fragmentów tytułu, EAN, wydawnictwa, imienia lub nazwiska autora i kategorii ignoruje wielkość liter; dodatnia liczba całkowita jest także porównywana z rokiem wydania.
+\item[WF-03. Filtrowanie i stronicowanie.]
+Łączne filtry autora, wydawnictwa, kategorii i dostępności; paginacja po 50, 100 lub 200 pozycji.
+\item[WF-04. Szczegóły wydania.]
+Opis bibliograficzny, powiązania i zbiorcze liczby egzemplarzy według statusów; publicznie bez numerów inwentarzowych i danych wypożyczających.
+\end{description}
+
+\subsubsection{Konto czytelnika i własne konto}
+
+\begin{description}
+    \item[WF-05. Założenie konta czytelnika.]
+Bibliotekarz wprowadza imię, nazwisko, e-mail, hasło początkowe i PESEL oraz opcjonalny telefon, tworząc aktywne konto \texttt{MEMBER}; formularz nie pozwala nadać roli bibliotekarza. Samodzielna rejestracja jest niedostępna. E-mail i PESEL są unikalne; znormalizowany PESEL ma 11 cyfr.
+\item[WF-06. Logowanie i wylogowanie.]
+Logowanie e-mailem i hasłem na konto założone przez bibliotekarza oraz wylogowanie; operacje chronione wymagają ważnej sesji.
+\item[WF-07. Informacje o własnym koncie.]
+Własny profil, aktywne wypożyczenia, najwyżej 50 ostatnich zwrotów i oczekujące rezerwacje.
+\item[WF-08. Edycja profilu.]
+Zmiana własnego imienia, nazwiska i telefonu, bez zmiany PESEL, roli i aktywności konta.
+\end{description}
+
+\subsubsection{Rezerwacje}
+
+\begin{description}
+    \item[WF-09. Utworzenie rezerwacji.]
+Zalogowany użytkownik z aktywnym kontem może zarezerwować istniejące wydanie bez dostępnych egzemplarzy. Istniejąca własna oczekująca rezerwacja powoduje odmowę.
+\item[WF-10. Anulowanie własnej rezerwacji.]
+Właściciel ustalony z sesji może anulować własną oczekującą rezerwację; rekord pozostaje w historii.
+\item[WF-11. Obsługa rezerwacji przez bibliotekarza.]
+Bibliotekarz przegląda i wyszukuje oczekujące oraz zakończone rezerwacje; może anulować oczekującą.
+\item[WF-12. Realizacja rezerwacji.]
+Bibliotekarz realizuje oczekującą rezerwację przez wypożyczenie dostępnego egzemplarza wydania. Obowiązują zwykłe warunki wypożyczenia; brak egzemplarza powoduje odmowę.
+\end{description}
+
+\subsubsection{Wypożyczenia i zwroty}
+
+\begin{description}
+    \item[WF-13. Rejestracja wypożyczenia.]
+Bibliotekarz wskazuje odbiorcę przez ID lub e-mail, a egzemplarz przez ID lub numer inwentarzowy. Brak wskazania albo obiektu powoduje odmowę.
+\item[WF-14. Warunki wypożyczenia.]
+Odbiorca musi mieć aktywne konto, brak zaległych wypożyczeń i mniej niż pięć aktywnych w chwili kontroli. Egzemplarz musi być dostępny i bez aktywnego wypożyczenia.
+\item[WF-15. Skutki wypożyczenia.]
+Zapis daty wypożyczenia, terminu po 14 dniach i statusu wypożyczonego. Oczekujące rezerwacje odbiorcy na to wydanie stają się zrealizowane.
+\item[WF-16. Rejestracja zwrotu.]
+Zwrot zapisuje datę i przywraca dostępność, z zachowaniem statusu zagubienia lub konserwacji. Brak wypożyczenia albo wcześniejszy zwrot powoduje odmowę.
+\item[WF-17. Zestawienia wypożyczeń.]
+Bibliotekarz przegląda i wyszukuje aktywne wypożyczenia oraz historię zwrotów; może wyodrębnić przeterminowane.
+\end{description}
+
+\subsubsection{Zarządzanie katalogiem}
+
+\begin{description}
+    \item[WF-18. Opisy wydań.]
+Tworzenie i edycja tytułu, EAN, roku, liczby stron, wydawnictwa, autorów i kategorii. Konflikt EAN jest odrzucany; dodanie wydania nie tworzy egzemplarza.
+\item[WF-19. Autorzy i wydawnictwa.]
+Zapis wydania wykorzystuje istniejących autorów i wydawnictwo lub tworzy brakujące rekordy na podstawie nazw.
+\item[WF-20. Dodawanie egzemplarzy.]
+Dodanie do istniejącego wydania egzemplarza z unikalnym numerem inwentarzowym i statusem dostępnym.
+\item[WF-21. Ręczna zmiana statusu egzemplarza.]
+Ręczne statusy: dostępny, zagubiony i konserwacja. Zmiana jest blokowana dla statusu wypożyczonego lub aktywnego wypożyczenia; status wypożyczonego wynika z obiegu.
+\item[WF-22. Usuwanie egzemplarzy i wydań.]
+Usunięcie egzemplarza wymaga braku jakiejkolwiek historii wypożyczeń; usunięcie wydania --- braku egzemplarzy i oczekujących rezerwacji.
+\item[WF-23. Kategorie.]
+Przeglądanie, dodawanie, zmiana nazwy i usuwanie nieużywanych kategorii; konflikt nazwy lub przypisanie do wydania blokują odpowiednią operację.
+\end{description}
+
+\subsubsection{Użytkownicy i kontrola dostępu}
+
+\begin{description}
+    \item[WF-24. Lista użytkowników.]
+Bibliotekarz przegląda i wyszukuje konta wraz z rolą, aktywnością i liczbami aktywnych oraz przeterminowanych wypożyczeń.
+\item[WF-25. Zmiana aktywności konta.]
+Aktywowanie lub dezaktywowanie wyłącznie innych kont \texttt{MEMBER}. Dezaktywacja blokuje nowe wypożyczenia i rezerwacje; własne konto i bibliotekarze są chronieni przed zmianą.
+\item[WF-26. Egzekwowanie uprawnień.]
+Własne dane wymagają sesji i są wybierane według jej tożsamości; panel bibliotekarza wymaga dodatkowo \texttt{LIBRARIAN}. Kontrole działają na serwerze niezależnie od interfejsu.
+\end{description}
+
+\subsection{Wymagania niefunkcjonalne}
+\label{subsec:wymagania-niefunkcjonalne}
+
+Identyfikatory \texttt{WN} określają wymagania jakościowe; mechanizmy ich realizacji opisuje rozdział 3.
+
+\subsubsection{Bezpieczeństwo i ochrona danych}
+
+\begin{description}
+    \item[WN-01. Rozdzielenie zakresów dostępu.]
+Publiczne są katalog i zbiorcza dostępność; profil, wypożyczenia i rezerwacje są dostępne właścicielowi lub uprawnionemu bibliotekarzowi.
+\item[WN-02. Ochrona danych uwierzytelniających.]
+Ochrona haseł i sesji przed ujawnieniem; rzeczywiste sekrety poza dokumentacją i publicznym kodem. Widoki nie udostępniają haseł.
+\item[WN-03. Walidacja po stronie serwera.]
+Serwerowa kontrola danych, uprawnień i reguł biznesowych niezależna od walidacji formularzy.
+\end{description}
+
+\subsubsection{Integralność i spójność informacji}
+
+\begin{description}
+    \item[WN-04. Integralność danych.]
+Poprawne identyfikatory, powiązania i dziedziny; unikalne e-mail, PESEL, EAN i numer inwentarzowy. Termin zwrotu późniejszy od wypożyczenia, PESEL z 11 cyfr i najwyżej jedno aktywne wypożyczenie egzemplarza.
+\item[WN-05. Spójność operacji wieloetapowych.]
+Powiązane zapisy wypożyczenia, zwrotu i realizacji rezerwacji są zatwierdzane łącznie lub wycofywane po błędzie.
+\end{description}
+
+\subsubsection{Użyteczność interfejsu}
+
+\begin{description}
+    \item[WN-06. Czytelność obsługi.]
+Czytelne obiekty, statusy, terminy i działania; rozdzielenie katalogu od egzemplarzy oraz wydzielony panel bibliotekarza.
+\item[WN-07. Informacja o wyniku operacji.]
+Informacja o wyniku i przyczynie obsługiwanych odmów; wyszukiwanie, filtry i paginacja ułatwiają odnajdywanie danych.
+\end{description}
+
+\subsubsection{Dostępność i skala danych}
+
+\begin{description}
+    \item[WN-08. Dostęp w środowisku uruchomieniowym.]
+Dostęp przez przeglądarkę wymaga serwera aplikacji, PostgreSQL i sieci. Praca offline i wysoka dostępność pozostają poza zakresem.
+\item[WN-09. Obsługa przyjętej skali danych.]
+Obsługa skali demonstracyjnej z tabeli~\ref{tab:rozmiar-bazy}; wartości nie określają maksymalnej pojemności systemu.
+\end{description}
+
+\begin{table}[htbp]
+\centering
+\caption{Skala danych wynikająca z konfiguracji generatora. Opracowanie własne.}
+\label{tab:rozmiar-bazy}
+\begin{tabular}{@{}p{0.46\linewidth}p{0.46\linewidth}@{}}
+\toprule
+\textbf{Obiekt} & \textbf{Liczba lub zakres} \\
+\midrule
+Konta bibliotekarzy & 2 \\
+Konta czytelników & 250 \\
+Autorzy & 400 \\
+Wydawnictwa & 50 \\
+Kategorie & 20 \\
+Wydania & 2000 \\
+Egzemplarze & 1--4 na wydanie; łącznie 2000--8000 \\
+Rezerwacje & 60 \\
+Wypożyczenia & Liczba zależna od przebiegu generatora
+i dostępnej puli egzemplarzy \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Liczebności w tabeli wynikają z parametrów generatora.
+Nie są prognozą zapotrzebowania konkretnej placówki
+ani wynikami pomiarów wydajności.
+Nie określono liczbowych wymagań dotyczących czasu odpowiedzi,
+liczby równoczesnych użytkowników ani procentowej
+dostępności usługi.
+
+\subsubsection{Utrzymywalność i organizacja aplikacji}
+
+\begin{description}
+    \item[WN-10. Rozdzielenie odpowiedzialności.]
+Rozdzielenie interfejsu, API, uwierzytelniania i dostępu do danych; współdzielone reguły biznesowe ograniczają powielanie kodu.
+\item[WN-11. Odtwarzalność środowiska.]
+Odtworzenie środowiska ze źródeł, zależności i instrukcji; utworzenie schematu, zastosowanie dodatkowego SQL i wprowadzenie danych demonstracyjnych.
+\end{description}
+
+\subsection{Założenia i ograniczenia projektu}
+\label{subsec:zalozenia-ograniczenia}
+
+\subsubsection{Założenia modelowe i reguły działania}
+
+
+Jedna biblioteka, bez ewidencji filii i transferów. Wydanie jest oddzielone od egzemplarza; autorzy i kategorie tworzą związki N:M z wydaniami. Publiczny katalog nie wymaga sesji; obieg rejestruje bibliotekarz. Konta czytelników zakłada wyłącznie bibliotekarz, a hasło początkowe przekazuje czytelnikowi poza systemem.
+
+Limit wynosi pięć aktywnych wypożyczeń, okres 14 dni. Warunki WF-14 dotyczą wypożyczenia; rezerwacja nie sprawdza limitu ani zaległości. Dezaktywacja nie odwołuje sesji: pozostają dostępne własny profil, jego edycja i anulowanie rezerwacji. Zwrot nie zależy od aktywności odbiorcy.
+
+Lista oczekujących rezerwacji jest uporządkowana według daty, lecz bibliotekarz wybiera zgłoszenie do realizacji. Wypożyczenie realizuje wszystkie oczekujące rezerwacje odbiorcy na to wydanie.
+
+\subsubsection{Założenia technologiczne}
+
+
+PostgreSQL, Prisma ORM, Next.js i TypeScript; API biblioteczne tRPC, uwierzytelnianie Better Auth. Podział komponentów przedstawia punkt~\ref{subsec:architektura-aplikacji}.
+
+\subsubsection{Granice zakresu funkcjonalnego}
+
+
+Poza zakresem: płatności, kary, recenzje, rozpoznawanie okładek, zewnętrzne katalogi, prolongaty i automatyczne powiadomienia. Brak osobnych paneli edycji i usuwania autorów oraz wydawnictw, zmiany ról i usuwania kont, odzyskiwania hasła oraz potwierdzania e-maila. PESEL podlega kontroli 11 cyfr, bez sumy kontrolnej i daty urodzenia.
+
+Własna historia obejmuje najwyżej 50 ostatnich zwrotów i tylko oczekujące rezerwacje; zakończone rezerwacje widzi bibliotekarz. Historia wypożyczeń chroni egzemplarze przed usunięciem. Zakończone rezerwacje są usuwane wraz z wydaniem.
 
 \section{Projekt systemu}
-Projekt i struktury bazy danych, mechanizmów zapewniania poprawności przechowywanych informacji, oraz kontroli dostępu do danych.
+
+
+
 
 \subsection{Projekt bazy danych}
-\subsubsection{Analiza rzeczywistości i uproszczony model konceptualny}
+\subsubsection{Analiza rzeczywistości i model konceptualny}
+\label{subsec:model-konceptualny}
+
+\noindent\textbf{Encje i atrybuty biznesowe}
+
+Model domenowy obejmuje osiem encji:
+\begin{description}
+\item[Wydanie.] EAN (unikalny), tytuł (nieunikalny), rok i liczba stron; powiązania z wydawnictwem, autorami i kategoriami. Brak osobnej encji dzieła grupującej wydania.
+\item[Egzemplarz.] Sztuka wydania z unikalnym numerem inwentarzowym i statusem dostępności, wypożyczenia, zagubienia lub konserwacji.
+\item[Autor.] Imię i nazwisko nie identyfikują jednoznacznie osoby; kolejność autora jest atrybutem związku z wydaniem.
+\item[Wydawnictwo.] Podmiot identyfikowany unikalną nazwą.
+\item[Kategoria.] Grupa klasyfikacyjna o unikalnej nazwie.
+\item[Użytkownik.] Imię, nazwisko, unikalne PESEL i e-mail, opcjonalny telefon, rola i aktywność. Obie role mogą wypożyczać i rezerwować.
+\item[Wypożyczenie.] Egzemplarz, odbiorca, data wypożyczenia, termin i opcjonalny zwrot; kolejne wypożyczenia są odrębnymi zdarzeniami.
+\item[Rezerwacja.] Użytkownik, wydanie, data i stan: oczekująca, zrealizowana lub anulowana; bez przydziału egzemplarza.
+\end{description}
+
+\texttt{Book} oznacza wydanie, a \texttt{Copy} egzemplarz. ERD domenowy pomija techniczne modele uwierzytelniania: \texttt{Session}, \texttt{Account} i \texttt{Verification}. Gość nie jest encją. Użytkownik powiązany z wypożyczeniem jest odbiorcą, nie operatorem rejestrującym.
+
+\noindent\textbf{Związki, liczności i opcjonalność}
+
+Na rysunku~\ref{fig:erd-konceptualny} liczność przy encji oznacza liczbę jej obiektów dla jednego obiektu po przeciwnej stronie: $1$ --- dokładnie jeden, $0..*$ --- zero lub wiele, $1..*$ --- co najmniej jeden. 
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=\linewidth,height=0.85\textheight,
+        keepaspectratio]{rysunki/erd_konceptualny.pdf}
+    \caption{Model konceptualny systemu bibliotecznego:
+    encje domenowe, atrybuty biznesowe i liczności związków.
+   . Opracowanie własne.}
+    \label{fig:erd-konceptualny}
+\end{figure}
+\phantomsection\label{tab:zwiazki-konceptualne}
+Wydanie ma dokładnie jedno wydawnictwo, co najmniej jednego autora, zero lub wiele kategorii i egzemplarzy. Wydawnictwo, autor i kategoria mogą nie mieć wydań lub mieć ich wiele. Każde wypożyczenie wskazuje jednego odbiorcę i egzemplarz, każda rezerwacja jednego użytkownika i wydanie; po stronie tych obiektów dopuszcza się zero lub wiele zdarzeń.
+
+Autorstwo i klasyfikacja są związkami N:M. Co najmniej jednego autora wymaga zapis wydania w aplikacji; autor może nie mieć wydań. Kategorie są opcjonalne po obu stronach. Wypożyczenia i rezerwacje mają własne dane zdarzeniowe, dlatego stanowią encje.
+
+\noindent\textbf{Reguły biznesowe kształtujące model}
+
+Wydanie może istnieć bez egzemplarzy. Historyczne $0..*$ wypożyczeń egzemplarza współistnieje z ograniczeniem najwyżej jednego aktywnego. Brak \texttt{returnedAt} oznacza aktywność; status egzemplarza dodatkowo uwzględnia zagubienie i konserwację. Rezerwacja nie ma bezpośredniego związku z egzemplarzem ani wypożyczeniem; nie występuje relacja 1:1. Warunki limitu, 14 dni, rezerwowania i zachowania historii określają WF-09, WF-14--16, WF-22 oraz punkt~\ref{subsec:zalozenia-ograniczenia}.
+
 \subsubsection{Model logiczny i normalizacja}
-\subsubsection{Model fizyczny i ograniczenia integralności danych}
-\subsubsection{Inne elementy schematu – mechanizmy przetwarzania danych}
-\subsubsection{Projekt mechanizmów bezpieczeństwa na poziomie bazy danych}
+\label{subsec:model-logiczny}
+
+Model zawiera 13 relacji. Modele \texttt{User}, \texttt{Session}, \texttt{Account}, \texttt{Verification} odpowiadają tabelom pisanym małymi literami; pozostałe nazwy modeli i tabel są identyczne. Relacje pośredniczące \texttt{BookAuthor} i \texttt{BookCategory} odwzorowują związki N:M.
+
+\noindent\textbf{Struktury relacyjne i atrybuty}
+
+Poniżej pełny wykaz kolumn. $?$ oznacza dopuszczalne \texttt{NULL}; pozostałe pola są wymagane. \texttt{createdAt}/\texttt{updatedAt} oznaczają utworzenie/aktualizację. Pola nawigacyjne ORM nie są kolumnami.
+\begin{description}
+\item[\texttt{Author}.] \texttt{id}, \texttt{firstName}, \texttt{lastName}, \texttt{createdAt}, \texttt{updatedAt}.
+
+    \item[\texttt{Publisher}.] \texttt{id}, \texttt{name}, \texttt{createdAt}, \texttt{updatedAt}.
+
+    \item[\texttt{Category}.] \texttt{id}, \texttt{name}, \texttt{createdAt}, \texttt{updatedAt}.
+
+    \item[\texttt{Book}.] \texttt{id}, \texttt{title}, \texttt{ean}, \texttt{pageCount}, \texttt{publicationYear}, \texttt{publisherId}, \texttt{createdAt}, \texttt{updatedAt}.
+
+    \item[\texttt{BookAuthor}.] \texttt{id}, \texttt{bookId}, \texttt{authorId}, \texttt{authorOrder}.
+
+    \item[\texttt{BookCategory}.] \texttt{bookId}, \texttt{categoryId}.
+
+    \item[\texttt{Copy}.] \texttt{id}, \texttt{bookId}, \texttt{inventoryNo}, \texttt{status}, \texttt{createdAt}, \texttt{updatedAt}.
+
+    \item[\texttt{Loan}.] \texttt{id}, \texttt{copyId}, \texttt{userId}, \texttt{loanedAt}, \texttt{dueAt}, \texttt{returnedAt}$^{?}$, \texttt{createdAt}, \texttt{updatedAt}.
+
+    \item[\texttt{Reservation}.] \texttt{id}, \texttt{bookId}, \texttt{userId}, \texttt{status}, \texttt{createdAt}, \texttt{updatedAt}.
+
+    \item[\texttt{User}.] \texttt{id}, \texttt{name}, \texttt{email}, \texttt{emailVerified}, \texttt{image}$^{?}$, \texttt{createdAt}, \texttt{updatedAt}, \texttt{firstName}, \texttt{lastName}, \texttt{phone}$^{?}$, \texttt{pesel}, \texttt{role}, \texttt{isActive}.
+
+    \item[\texttt{Session}.] \texttt{id}, \texttt{expiresAt}, \texttt{token}, \texttt{createdAt}, \texttt{updatedAt}, \texttt{ipAddress}$^{?}$, \texttt{userAgent}$^{?}$, \texttt{userId}.
+
+    \item[\texttt{Account}.] \texttt{id}, \texttt{accountId}, \texttt{providerId}, \texttt{userId}, \texttt{accessToken}$^{?}$, \texttt{refreshToken}$^{?}$, \texttt{idToken}$^{?}$, \texttt{accessTokenExpiresAt}$^{?}$, \texttt{refreshTokenExpiresAt}$^{?}$, \texttt{scope}$^{?}$, \texttt{password}$^{?}$, \texttt{createdAt}, \texttt{updatedAt}.
+
+    \item[\texttt{Verification}.] \texttt{id}, \texttt{identifier}, \texttt{value}, \texttt{expiresAt}, \texttt{createdAt}, \texttt{updatedAt}.
+\end{description}
+
+\texttt{User.name} jest nazwą wyświetlaną, \texttt{emailVerified} stanem potwierdzenia e-maila. \texttt{Account.password} przechowuje skrót hasła, pozostałe tokeny obsługują strukturę biblioteki; nie oznacza to udostępnienia logowania zewnętrznego. \texttt{Verification.identifier} nie jest FK. Dziedziny: \texttt{Role} = \{\texttt{MEMBER}, \texttt{LIBRARIAN}\}; \texttt{CopyStatus} = \{\texttt{AVAILABLE}, \texttt{LOANED}, \texttt{LOST}, \texttt{MAINTENANCE}\}; \texttt{ReservationStatus} = \{\texttt{PENDING}, \texttt{FULFILLED}, \texttt{CANCELLED}\}.
+
+\noindent\textbf{Klucze i ograniczenia unikalności}
+
+PK --- klucz główny, FK --- obcy, AK --- alternatywny. \texttt{authorOrder} opisuje pozycję autora w wydaniu. Nie ma unikalności par \texttt{(bookId, authorOrder)}, \texttt{Account(providerId, accountId)}, \texttt{Reservation(bookId, userId)}, pola \texttt{Verification.identifier} ani imienia i nazwiska autora.
+
+\phantomsection\label{tab:klucze-logiczne}
+PK to \texttt{id}, z wyjątkiem \texttt{BookCategory(bookId, categoryId)}. AK: \texttt{User.email}, osobno \texttt{User.pesel}, \texttt{Session.token}, \texttt{Publisher.name}, \texttt{Category.name}, \texttt{Book.ean}, \texttt{Copy.inventoryNo} oraz \texttt{BookAuthor(bookId, authorId)}. Pozostałe relacje nie mają dodatkowych AK.
+
+\noindent\textbf{Związki i opcjonalność uczestnictwa}
+
+Komplet 12 FK przedstawia tabela~\ref{tab:fk-logiczne}. Każdy jest wymagany i wskazuje \texttt{id}: dziecko ma jednego rodzica, rodzic zero lub wiele dzieci. Nie występują związki 1:1; użytkownik może mieć wiele sesji i kont dostawców. \texttt{Verification} nie ma FK. Wydanie może strukturalnie nie mieć przypisań autorów; minimum jednego egzekwuje aplikacja. Częściowa unikalność aktywnych wypożyczeń nie czyni \texttt{Loan.copyId} kluczem całej historii.
+
+\begin{table}[htbp]
+\centering
+\caption{Klucze obce i liczności związków modelu logicznego. Opracowanie własne.}
+\label{tab:fk-logiczne}
+\normalsize
+\begin{tabular}{@{}p{0.28\linewidth}p{0.20\linewidth}p{0.27\linewidth}p{0.13\linewidth}@{}}
+\toprule
+\textbf{Relacja podrzędna} & \textbf{FK}
+& \textbf{Wskazywany PK} & \textbf{Rodzic : dzieci} \\
+\midrule
+\texttt{Session} & \texttt{userId} & \texttt{User.id} & $1:0..*$ \\
+\texttt{Account} & \texttt{userId} & \texttt{User.id} & $1:0..*$ \\
+\texttt{Book} & \texttt{publisherId} & \texttt{Publisher.id} & $1:0..*$ \\
+\texttt{BookAuthor} & \texttt{bookId} & \texttt{Book.id} & $1:0..*$ \\
+\texttt{BookAuthor} & \texttt{authorId} & \texttt{Author.id} & $1:0..*$ \\
+\texttt{BookCategory} & \texttt{bookId} & \texttt{Book.id} & $1:0..*$ \\
+\texttt{BookCategory} & \texttt{categoryId} & \texttt{Category.id} & $1:0..*$ \\
+\texttt{Copy} & \texttt{bookId} & \texttt{Book.id} & $1:0..*$ \\
+\texttt{Loan} & \texttt{copyId} & \texttt{Copy.id} & $1:0..*$ \\
+\texttt{Loan} & \texttt{userId} & \texttt{User.id} & $1:0..*$ \\
+\texttt{Reservation} & \texttt{bookId} & \texttt{Book.id} & $1:0..*$ \\
+\texttt{Reservation} & \texttt{userId} & \texttt{User.id} & $1:0..*$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=\linewidth,height=0.88\textheight,
+        keepaspectratio]{rysunki/erd_logiczny.pdf}
+    \caption{Model logiczny bazy danych systemu bibliotecznego:
+    13 tabel, klucze główne, alternatywne i obce oraz liczności
+    związków . Opracowanie własne.}
+    \label{fig:erd-logiczny}
+\end{figure}
+
+Rysunek~\ref{fig:erd-logiczny} pokazuje tabele, klucze i związki; pełne atrybuty wymieniono powyżej.
+
+\noindent\textbf{Zależności funkcyjne}
+
+Każdy PK i AK wyznacza cały rekord, m.in. \texttt{Book.ean}, \texttt{Copy.inventoryNo}, osobno \texttt{User.email} i \texttt{User.pesel}, \texttt{Session.token}. W \texttt{BookAuthor} para $(\texttt{bookId},\texttt{authorId})$ wyznacza \texttt{id} i \texttt{authorOrder}; samo \texttt{Session.userId} nie wyznacza sesji.
+
+\noindent\textbf{Pierwsza postać normalna (1NF)}
+
+Kolumny zawierają pojedyncze wartości. Autorzy, kategorie, sesje i kolejne wypożyczenia są osobnymi rekordami, bez list w kolumnach i grup powtarzalnych. Listy relacyjne ORM służą nawigacji.
+
+\noindent\textbf{Druga postać normalna (2NF)}
+
+Nie występują zależności częściowe od kluczy kandydujących. \texttt{BookCategory} zawiera tylko składniki PK; w \texttt{BookAuthor} kolejność zależy od całej pary wydanie--autor, nie od jednego składnika. Pozostałe zadeklarowane klucze kandydujące są jednoatrybutowe.
+
+\noindent\textbf{Trzecia postać normalna (3NF)}
+
+Opis wydania pozostaje w \texttt{Book}, wydawnictwa w \texttt{Publisher}, autora i kategorii w ich słownikach, a profil użytkownika w \texttt{User}. Relacje zależne przechowują FK zamiast powielać te dane, eliminując typowe zależności przechodnie.
+
+Rzeczywiste odstępstwo stanowi \texttt{User.name}, wyliczane z \texttt{firstName} i \texttt{lastName}. Przy tej semantyce para imię--nazwisko wyznacza niekluczowe \texttt{name}, choć nie jest nadkluczem. Redundancja służy Better Auth i prezentacji; profil zapisuje składniki i wynik razem. Jest to reguła aplikacji, nie ograniczenie schematu.
+
+\texttt{Copy.status} wymaga spójności z \texttt{Loan}, lecz zawiera także niezależne stany zagubienia i konserwacji; sam w sobie nie dowodzi naruszenia 3NF. Ocena dotyczy opisanych kluczy i zależności, nie wszystkich możliwych reguł dostawców uwierzytelniania. Ze względu na \texttt{User.name} nie deklaruje się bezwarunkowej 3NF całej bazy.
+
+\subsubsection{Model fizyczny i ograniczenia integralności}
+\label{subsec:model-fizyczny}
+
+PostgreSQL: \texttt{prisma/schema.prisma} definiuje strukturę, a \texttt{prisma/sql/constraints.sql} dodaje dwa \texttt{CHECK}, częściowy indeks unikalny i synchronizację statusu. Opis dotyczy definicji projektu, nie inwentaryzacji działającej instancji.
+
+\noindent\textbf{Odwzorowanie tabel i typów danych}
+
+Nazwy tabel podano w punkcie~\ref{subsec:model-logiczny}; nazwy kolumn odpowiadają polom skalarnym. SQL używa cudzysłowów, np. \texttt{"Book"}, aby zachować wielkość liter. Bez adnotacji \texttt{@db.*} obowiązuje domyślne mapowanie konektora PostgreSQL.~\cite{prisma-postgresql}
+
+\phantomsection\label{tab:typy-fizyczne}
+Mapowanie Prisma--PostgreSQL: \texttt{String} $\to$ \texttt{text} (ID, opisy, EAN, PESEL, e-mail i poświadczenia), \texttt{Int} $\to$ \texttt{integer} (liczba stron, rok, kolejność autora), \texttt{Boolean} $\to$ \texttt{boolean} (aktywność, potwierdzenie e-maila), \texttt{DateTime} $\to$ \texttt{timestamp(3)} bez strefy. Typy \texttt{Role}, \texttt{CopyStatus}, \texttt{ReservationStatus} są PostgreSQL ENUM o wartościach z punktu~\ref{subsec:model-logiczny}.
+
+\texttt{text} nie narzuca długości ani nie staje się typem UUID; \texttt{integer} nie wymusza dodatniości i zakresu roku. \texttt{timestamp(3)} ma precyzję milisekund, bez strefy. ENUM ogranicza wartości, nie przejścia stanów. Limity formularzy nie są ograniczeniami kolumn.
+
+\noindent\textbf{Opcjonalność i wartości domyślne}
+
+Pola z $?$ w modelu logicznym dopuszczają \texttt{NULL}; pozostałe, w tym wszystkie FK, są \texttt{NOT NULL}, co nie wyklucza pustego tekstu. Wartości domyślne SQL należy odróżnić od działań ORM.~\cite{prisma-schema}
+
+\phantomsection\label{tab:domyslne-fizyczne}
+PostgreSQL realizuje \texttt{now()} i stałe domyślne: \texttt{emailVerified = false}, \texttt{isActive = true}, \texttt{role = MEMBER}, \texttt{Copy.status = AVAILABLE}, \texttt{Reservation.status = PENDING}. Prisma realizuje \texttt{cuid()} i \texttt{@updatedAt}; nie są to funkcja SQL \texttt{DEFAULT cuid()} ani wyzwalacz aktualizacji dla dowolnego SQL.
+
+\texttt{cuid()} dotyczy ośmiu domenowych pól \texttt{id}; czterem modelom uwierzytelniania ID dostarcza biblioteka lub kod, a \texttt{BookCategory} ma PK złożony. \texttt{now()} występuje we wszystkich \texttt{createdAt}, w \texttt{Loan.loanedAt} i w \texttt{User.updatedAt}/\texttt{Verification.updatedAt}. Pozostałe \texttt{updatedAt} mają tylko mechanizm ORM; bezpośredni SQL musi go uwzględnić. Termin \texttt{dueAt} oblicza aplikacja, bez SQL dodającego 14 dni.
+
+\noindent\textbf{Klucze i ograniczenia integralności}
+
+Schemat zawiera 13 PK, 12 FK i osiem dodatkowych deklaracji unikalności (punkt~\ref{subsec:model-logiczny}). Unikalność może być odwzorowana jako samodzielny indeks, niekoniecznie wpis typu \texttt{UNIQUE} w katalogu ograniczeń.
+
+\phantomsection\label{tab:integralnosc-fizyczna}
+PK, FK, wymagane kolumny i unikalność wynikają ze schematu Prisma. Dodatkowy SQL definiuje dwa \texttt{CHECK} opisane poniżej oraz częściową unikalność aktywnego wypożyczenia egzemplarza.
+
+\texttt{loan\_due\_after\_loaned}: \texttt{"dueAt" > "loanedAt"}; oba pola są wymagane. Warunek nie wymusza 14 dni ani poprawności daty faktycznego zwrotu. \texttt{user\_pesel\_format}: \verb|CHECK ("pesel" ~ '^[0-9]{11}$')|, bez sprawdzania sumy kontrolnej, daty urodzenia i niezmienności PESEL. Unikalność jest osobną regułą.
+
+\noindent\textbf{Integralność referencyjna}
+
+Tabela~\ref{tab:usuwanie-fizyczne} opisuje skutek usunięcia rodzica. FK nie wymusza istnienia dzieci. \texttt{RESTRICT} chroni użytkownika i egzemplarz z dowolną historią wypożyczeń, także zakończonych; kaskada rezerwacji nie uchyla tej blokady. Dla \texttt{Book.publisher} \texttt{Restrict} jest domyślną regułą Prisma dla wymaganej relacji, nie domyślnym SQL. Wszystkie niewskazane jawnie \texttt{onUpdate} mapują się na \texttt{Cascade}.~\cite{prisma-referential}
+
+\begin{table}[htbp]
+\centering
+\caption{Działania referencyjne przy usuwaniu rekordów. Opracowanie własne.}
+\label{tab:usuwanie-fizyczne}
+\normalsize
+\begin{tabular}{@{}p{0.47\linewidth}p{0.17\linewidth}p{0.28\linewidth}@{}}
+\toprule
+\textbf{Rodzic i relacje zależne} & \textbf{ON DELETE} & \textbf{Sposób określenia} \\
+\midrule
+\texttt{User}: \texttt{Session}, \texttt{Account}, \texttt{Reservation}
+& \texttt{CASCADE} & Jawnie w schemacie \\
+
+\texttt{Book}, \texttt{Author}: \texttt{BookAuthor}
+& \texttt{CASCADE} & Jawnie w schemacie \\
+
+\texttt{Book}, \texttt{Category}: \texttt{BookCategory}
+& \texttt{CASCADE} & Jawnie w schemacie \\
+
+\texttt{Book}: \texttt{Reservation}
+& \texttt{CASCADE} & Jawnie w schemacie \\
+
+\texttt{Book}: \texttt{Copy}
+& \texttt{RESTRICT} & Jawnie w schemacie \\
+
+\texttt{Copy}, \texttt{User}: \texttt{Loan}
+& \texttt{RESTRICT} & Jawnie w schemacie \\
+
+\texttt{Publisher}: \texttt{Book}
+& \texttt{RESTRICT} & Domyślna reguła Prisma dla wymaganej relacji \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\noindent\textbf{Indeksy i ich przeznaczenie}
+
+Tabela~\ref{tab:indeksy-fizyczne} zawiera 11 jawnych indeksów nieunikalnych, domyślnie B-tree. Złożony AK \texttt{BookAuthor} i PK \texttt{BookCategory} zaczynają się od \texttt{bookId}; osobne indeksy obsługują drugi kierunek relacji. Indeksy rezerwacji nie są unikalne.
+
+\begin{table}[htbp]
+\centering
+\caption{Jawne indeksy nieunikalne zadeklarowane w schemacie. Opracowanie własne.}
+\label{tab:indeksy-fizyczne}
+\normalsize
+\begin{tabular}{@{}p{0.23\linewidth}p{0.29\linewidth}p{0.40\linewidth}@{}}
+\toprule
+\textbf{Tabela} & \textbf{Kolumny indeksu} & \textbf{Przeznaczenie} \\
+\midrule
+\texttt{Book} & \texttt{publisherId} & Wyszukiwanie wydań wydawnictwa i łączenie tabel \\
+\texttt{Book} & \texttt{title} & Dostęp i porządkowanie według tytułu \\
+\texttt{BookAuthor} & \texttt{authorId} & Wyszukiwanie przypisań autora \\
+\texttt{BookCategory} & \texttt{categoryId} & Wyszukiwanie przypisań kategorii \\
+\texttt{Copy} & \texttt{bookId} & Wyszukiwanie egzemplarzy wydania \\
+\texttt{Copy} & \texttt{status} & Filtrowanie według statusu \\
+\texttt{Loan} & \texttt{userId} & Wypożyczenia użytkownika \\
+\texttt{Loan} & \texttt{copyId} & Historia wypożyczeń egzemplarza \\
+\texttt{Loan} & \texttt{dueAt} & Warunki zakresowe i porządkowanie według terminu \\
+\texttt{Reservation} & (\texttt{bookId}, \texttt{status}) & Rezerwacje wydania o określonym statusie \\
+\texttt{Reservation} & (\texttt{userId}, \texttt{status}) & Rezerwacje użytkownika o określonym statusie \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Sam FK nie tworzy indeksu kolumny odwołującej się.~\cite{postgres-constraints} Brak osobnych indeksów \texttt{Session.userId}, \texttt{Account.userId}, \texttt{Verification.identifier}. Przeznaczenie indeksów nie jest wynikiem pomiaru; plan zależy od danych i statystyk. B-tree na tytule nie gwarantuje przyspieszenia wyszukiwania dowolnego fragmentu bez rozróżniania liter; nie użyto indeksu trigramowego.
+
+\noindent\textbf{Częściowy indeks unikalny aktywnych wypożyczeń}
+
+\texttt{loan\_one\_active\_per\_copy} definiuje unikalność \texttt{Loan(copyId)} wyłącznie przy \texttt{returnedAt IS NULL}. Chroni również przed równoczesnym wypożyczeniem tej samej sztuki, zachowując wiele rekordów historycznych.~\cite{postgres-partial} Pełny indeks \texttt{Loan.copyId} służy także historii. Żaden z nich nie chroni limitu pięciu wypożyczeń ani unikalności oczekujących rezerwacji użytkownika.
+
+Bilans definicji: 13 indeksów PK, osiem dodatkowych unikalnych, 11 nieunikalnych i jeden częściowy unikalny --- łącznie 33 przy standardowym odwzorowaniu.
+
+\noindent\textbf{Zastosowanie dodatkowych definicji SQL}
+
+\texttt{prisma/apply-constraints.ts} wykonuje plik SQL przez \texttt{pg} w transakcji z wycofaniem po błędzie. Istniejące dane muszą spełniać ograniczenia; duplikaty aktywnych wypożyczeń nie są automatycznie usuwane. Projektowe \texttt{pnpm db:push} obejmuje synchronizację Prisma, generowanie klienta i dodatkowy SQL; samo \texttt{prisma db push} pomija ostatni krok. Przy ponownym zastosowaniu \texttt{CHECK} są odtwarzane; \texttt{IF NOT EXISTS} indeksu nie sprawdza zgodności jego istniejącej definicji. Funkcję i wyzwalacz opisuje punkt~\ref{subsec:przetwarzanie-danych}.
+
+\subsubsection{Pozostałe elementy schematu i mechanizmy przetwarzania danych}
+\label{subsec:przetwarzanie-danych}
+
+Prisma koordynuje operacje, PostgreSQL wymusza integralność i synchronizuje status egzemplarza. Zestawienia tworzą zapytania aplikacji; nie zdefiniowano własnych widoków SQL ani procedur wywoływanych przez \texttt{CALL}.
+
+\noindent\textbf{Synchronizacja statusu egzemplarza}
+
+Funkcja PL/pgSQL \texttt{sync\_copy\_status\_on\_loan()} zwraca \texttt{trigger}. Wyzwalacz \texttt{loan\_sync\_copy\_status} działa w tabeli \texttt{Loan}, wierszowo, \texttt{AFTER INSERT OR UPDATE OF "returnedAt"}, w tej samej transakcji co zapis, nie po jej zatwierdzeniu. Wskazanie kolumny w aktualizacji uruchamia go także bez zmiany wartości.~\cite{postgres-trigger}
+
+Dla \texttt{NEW.returnedAt IS NULL} zmienia \texttt{AVAILABLE} na \texttt{LOANED}; dla daty zwrotu zmienia \texttt{LOANED} na \texttt{AVAILABLE}, jeżeli nie ma innego aktywnego wypożyczenia. Obie gałęzie ustawiają \texttt{Copy.updatedAt = now()}. Zachowują \texttt{LOST} i \texttt{MAINTENANCE}. Warunek obejmuje także wstawienie zakończonego wypożyczenia; \texttt{RETURN NEW} w wyzwalaczu AFTER nie zmienia zapisanego \texttt{Loan}.
+
+Mechanizm nie reaguje na usunięcie wypożyczenia, zmianę wyłącznie \texttt{copyId} ani bezpośredni zapis \texttt{Copy}. Zmiana \texttt{copyId} razem z \texttt{returnedAt} obsługuje tylko nowy egzemplarz. Nie blokuje wypożyczenia sztuki zagubionej lub konserwowanej: to kontrola aplikacji. Dwie aktualizacje poprzedzające definicję funkcji w pliku SQL porządkują istniejące rozbieżności \texttt{AVAILABLE}/\texttt{LOANED} tylko przy zastosowaniu skryptu; cały plik obejmuje \texttt{BEGIN}--\texttt{COMMIT}/\texttt{ROLLBACK}.
+
+\noindent\textbf{Transakcje operacji bibliotecznych}
+
+Router bibliotekarza definiuje pięć transakcji z tabeli~\ref{tab:transakcje-biblioteczne}. Wszystkie operacje korzystają ze wspólnego klienta \texttt{tx}; nieobsłużony błąd wycofuje zapisy.~\cite{prisma-transactions}
+
+\begin{table}[htbp]
+\centering
+\caption{Zakres jawnych transakcji w operacjach bibliotekarza. Opracowanie własne.}
+\label{tab:transakcje-biblioteczne}
+\normalsize
+\begin{tabular}{@{}p{0.27\linewidth}p{0.65\linewidth}@{}}
+\toprule
+\textbf{Operacja} & \textbf{Czynności objęte transakcją} \\
+\midrule
+Utworzenie wypożyczenia & Sprawdzenie warunków wypożyczenia, zapis
+\texttt{Loan}, aktualizacja egzemplarza i realizacja oczekujących
+rezerwacji użytkownika na to wydanie \\
+
+Zwrot egzemplarza & Odczyt i kontrola wypożyczenia, zapis daty
+zwrotu oraz warunkowa aktualizacja statusu egzemplarza \\
+
+Realizacja rezerwacji & Kontrola rezerwacji, wybór dostępnego
+egzemplarza i wykonanie wspólnej operacji wypożyczenia \\
+
+Dodanie wydania & Ustalenie lub utworzenie wydawnictwa i autorów,
+zapis wydania oraz powiązań z autorami i kategoriami \\
+
+Edycja wydania & Kontrola istnienia wydania, ustalenie powiązań,
+usunięcie dotychczasowych przypisań autorów i kategorii oraz
+aktualizacja danych wraz z nowymi przypisaniami \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Rozpoznanie odbiorcy po e-mailu i egzemplarza po numerze oraz wstępne sprawdzenie konfliktu EAN poprzedzają odpowiednie transakcje; ostatecznie unikalność chroni baza. Wspólne \texttt{createLoanForCopy} obsługuje zwykłe wypożyczenie i realizację rezerwacji. Przy zwrocie aplikacja zapisuje status na podstawie wcześniejszego odczytu, równolegle z działaniem wyzwalacza; są to dwa miejsca zapisu, nie delegowanie całości do bazy.
+
+\noindent\textbf{Zapytania katalogowe i obsługa rezerwacji}
+
+\texttt{count} i \texttt{findMany} korzystają z tych samych filtrów; \texttt{skip}/\texttt{take} wyznaczają stronę, tytuł kolejność wydań, \texttt{authorOrder} kolejność autorów. Tekst jest dopasowywany przez \texttt{contains}/\texttt{insensitive}; liczby egzemplarzy oblicza aplikacja z pobranych statusów. \texttt{Promise.all} nie zapewnia wspólnego obrazu danych licznika i strony. Rezerwowanie obejmuje odczyty kontrolne i zapis \texttt{PENDING}, bez wspólnej jawnej transakcji; własne dane filtruje ID z sesji (punkt~\ref{subsec:funkcje-systemu}).
+
+\noindent\textbf{Współpraca mechanizmów i zakres gwarancji}
+
+Indeks częściowy odrzuca konkurujące aktywne wypożyczenia tej samej sztuki; rozpoznany konflikt powoduje błąd i wycofanie transakcji. Pozostałe kontrole mają ograniczenia:
+\begin{itemize}
+\item Nie podano poziomu izolacji ani blokady użytkownika. Dwa wypożyczenia różnych sztuk mogą przejść kontrolę tego samego wcześniejszego limitu i go przekroczyć.
+\item Brak bazodanowej unikalności oczekującej rezerwacji użytkownik--wydanie oraz wspólnej transakcji kontroli i zapisu dopuszcza duplikaty przy równoległych żądaniach.
+\item Anulowanie i realizacja odczytują status przed zapisem, bez wspólnej blokady lub warunkowego przejścia. Dodatkowy zapis statusu przy zwrocie również korzysta z wcześniejszego odczytu. Możliwe są konflikty anulowania, realizacji i ręcznych zmian statusu.
+\end{itemize}
+Atomowość nie oznacza serializacji wszystkich reguł biznesowych; gwarancji dla egzemplarza nie należy rozszerzać na powyższe przypadki.
+
+\subsubsection{Projekt bezpieczeństwa na poziomie bazy danych}
+\label{subsec:bezpieczenstwo-bazy}
+
+\noindent\textbf{Architektura dostępu i konfiguracja połączenia}
+
+Przeglądarka wywołuje serwer, który używa wspólnego klienta Prisma/\texttt{PrismaPg}. \texttt{DATABASE\_URL} jest serwerowym adresem połączenia z danymi uwierzytelniającymi; walidację URL można pominąć przez \texttt{SKIP\_ENV\_VALIDATION}. Wspólny klient nie oznacza osobnego konta SQL dla każdej sesji ani jednego fizycznego połączenia.
+
+\texttt{apply-constraints.ts} pobiera tę samą zmienną przez \texttt{process.env}/\texttt{dotenv} i używa \texttt{pg}; brak odrębnej konfiguracji administracyjnej. \texttt{BETTER\_AUTH\_SECRET} oraz hasła użytkowników aplikacji są odrębne od poświadczeń PostgreSQL. Better Auth korzysta ze wspólnego adaptera Prisma.
+
+\noindent\textbf{Role aplikacyjne a uprawnienia PostgreSQL}
+
+\texttt{User.role} nie tworzy ról PostgreSQL i nie przełącza tożsamości połączenia. 
+
+\phantomsection\label{tab:poziomy-kontroli-dostepu}
+Konto PostgreSQL określa uprawnienia do obiektów bazy. Typy procedur tRPC rozdzielają katalog publiczny, dane własne i obsługę biblioteki (tabela~\ref{tab:autoryzacja-aplikacji}); nie zmieniają użytkownika połączenia.
+
+Sesja nie filtruje automatycznie danych właściciela: robią to procedury przez \texttt{ctx.session.user.id}. Aktywność konta jest warunkiem wybranych operacji. Projekt nie definiuje RLS ani \texttt{GRANT}/\texttt{REVOKE} dla ról bibliotecznych; bezpośredni SQL podlega kontu bazy, bez kontroli tRPC.
+
+\noindent\textbf{Przekazywanie parametrów i ochrona integralności}
+
+Prisma przekazuje dane w \texttt{where}/\texttt{data}, oddzielając wartości od składni SQL; Zod waliduje argumenty. Parametryzacja nie zastępuje autoryzacji i filtrów właściciela. Administracyjny \texttt{pg} wykonuje stały plik definicji i stałe zapytanie diagnostyczne, nie SQL dostarczany przez użytkownika.
+
+PK, FK, unikalność, \texttt{NOT NULL}, \texttt{CHECK}, ENUM, transakcje i wyzwalacz chronią spójność (punkty~\ref{subsec:model-fizyczny}--\ref{subsec:przetwarzanie-danych}), ale nie uprawnienia czytelnika. Zasada minimalnych uprawnień wymaga ograniczenia konta roboczego do potrzebnych odczytów i zapisów oraz oddzielenia uprawnień zmiany schematu. Konkretnych kont i nadań nie udokumentowano; wymagają określenia w konfiguracji wdrożenia.
 
 \subsection{Projekt aplikacji użytkownika}
 \subsubsection{Architektura aplikacji i diagramy projektowe}
-\subsubsection{Interfejs graficzny i struktura menu}
+\label{subsec:architektura-aplikacji}
+
+BD2P łączy Next.js 15, React 19, TypeScript i PostgreSQL. Interfejs oraz API należą do jednego projektu; warstwy są podziałem odpowiedzialności, nie mikrousługami.
+
+\noindent\textbf{Warstwy i komponenty systemu}
+
+App Router i serwerowe komponenty React pobierają dane, komponenty klienckie obsługują formularze i mutacje. Wspólny układ zawiera nagłówek i \texttt{TRPCReactProvider}; stylowanie zapewnia Tailwind CSS 4. \texttt{appRouter} łączy \texttt{book} (katalog i własne rezerwacje), \texttt{user} (konto) oraz \texttt{librarian} (obsługa biblioteki). Odczyty to \texttt{query}, zmiany --- \texttt{mutation}; TypeScript współdzieli typy, Zod sprawdza argumenty podczas wykonania.
+
+Logika pozostaje w routerach, funkcjach pomocniczych i \texttt{src/lib}, bez osobnych usług i repozytoriów encji. Procedury używają Prisma z kontekstu; \texttt{PrismaPg}/\texttt{pg} łączy serwer z PostgreSQL. Rysunek~\ref{fig:architektura-aplikacji} pokazuje kierunki wywołań między odpowiedzialnościami, nie osobnymi procesami.
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=\linewidth,height=0.82\textheight,keepaspectratio]
+        {rysunki/architektura_aplikacji.pdf}
+    \caption{Architektura komponentów BD2P: komunikacja przeglądarkowa,
+    wywołania serwerowe oraz wspólny dostęp do PostgreSQL . Opracowanie własne.}
+    \label{fig:architektura-aplikacji}
+\end{figure}
+
+\noindent\textbf{Komunikacja klienta z serwerem}
+
+Klient tRPC współpracuje z TanStack Query. \texttt{httpBatchStreamLink} kieruje grupowane wywołania i strumieniowane odpowiedzi do \texttt{/api/trpc}; adapter Fetch przekazuje je routerowi. SuperJSON serializuje m.in. daty. Grupowanie HTTP nie tworzy transakcji SQL.
+
+\texttt{src/trpc/server.ts} udostępnia serwerowy \texttt{caller}: komponent serwerowy wywołuje tę samą procedurę z kontekstem i kontrolami, bez HTTP do własnego endpointu. \texttt{HydrateClient} integruje stan zapytań; wyniki można przekazać komponentom jako właściwości. Po mutacji stosowane są zmiany stanu, \texttt{router.refresh()} i w wybranych komponentach unieważnienie zapytań. Brak kanału WebSocket rozsyłającego zmiany.
+
+\noindent\textbf{Uwierzytelnianie i kontekst sesji}
+
+Logowanie korzysta z klienta Better Auth i osobnej trasy \texttt{/api/auth/[...all]}, nie z routerów bibliotecznych; publiczny endpoint rejestracji jest wyłączony. Konta czytelników tworzy procedura \texttt{librarian.createMember}, korzystająca z wewnętrznego adaptera Better Auth (\texttt{auth.\$context}). Adapter używa wspólnego Prisma. Kontekst tRPC pobiera sesję z nagłówków i udostępnia \texttt{db}; strony i nagłówek korzystają także z \texttt{getSession}. Akcja serwerowa wylogowania wywołuje \texttt{auth.api.signOut} i przekierowuje do katalogu.
+
+\noindent\textbf{Organizacja modułów}
+
+\phantomsection\label{tab:moduly-aplikacji}
+\texttt{src/app}: trasy, układ i handlery; \texttt{src/components}: formularze, listy i nawigacja; \texttt{src/trpc}: klient, caller, zapytania i hydratacja; \texttt{src/server/api}: kontekst, procedury i routery; \texttt{src/server/better-auth}: konfiguracja, klient i sesja; \texttt{src/server/db.ts}: Prisma; \texttt{src/lib}: reguły, limity, PESEL i parametry nawigacji; \texttt{src/styles}: style i Tailwind; \texttt{prisma}/\texttt{generated/prisma}: schemat, skrypty i wygenerowany klient.
+
+\noindent\textbf{Przepływ danych podczas interakcji}
+
+Mutacja: formularz $\rightarrow$ tRPC $\rightarrow$ kontekst i kontrole $\rightarrow$ Prisma $\rightarrow$ PostgreSQL $\rightarrow$ wynik/błąd i odświeżenie widoku. Odczyt strony katalogu zaczyna się od parametrów URL w komponencie serwerowym i wywołania \texttt{caller}; dalsza logika jest wspólna.
+
+\subsubsection{Interfejs użytkownika i struktura nawigacji}
+\label{subsec:interfejs-nawigacja}
+
+Wspólny nagłówek prowadzi do katalogu; gość widzi logowanie, użytkownik konto i wylogowanie, bibliotekarz dodatkowo panel. Polskie etykiety, nazwane pola, karty i tabele prezentują dane. Układ jest responsywny, szerokie tabele przewijane poziomo; rozróżniono pustą listę, wykonywanie operacji i błąd.
+
+\noindent\textbf{Publiczny katalog i szczegóły wydania}
+
+\texttt{/} zawiera wyszukiwanie, filtry, ich czyszczenie i wybór wielkości strony zgodnie z WF-01--04. Formularz GET zapisuje warunki i paginację w URL, umożliwiając odtworzenie widoku. Karty pokazują podstawowe dane oraz dostępne/wszystkie egzemplarze i prowadzą do \texttt{/books/[id]}.
+
+Szczegóły zawierają dane bibliograficzne, kategorie, liczby dostępnych, wypożyczonych i wszystkich egzemplarzy oraz powrót do katalogu. Gość otrzymuje odnośnik logowania; zalogowany --- złożenie lub anulowanie rezerwacji, zależnie od dostępności i własnego zgłoszenia.
+
+\noindent\textbf{Logowanie i własne konto}
+
+\texttt{/login} przyjmuje e-mail i hasło, prezentuje błędy i informuje, że konto zakłada bibliotekarz; aplikacja nie ma trasy rejestracji. Powodzenie oraz wejście z istniejącą sesją prowadzą do \texttt{/account}.
+
+Konto ma cztery części: profil, aktywne wypożyczenia, historię i oczekujące rezerwacje. Edytowalne są imię, nazwisko i telefon; e-mail, PESEL i rola są informacyjne. Wypożyczenia pokazują tytuł, numer inwentarzowy, daty i termin, historia także zwrot, a nagłówek wykorzystanie limitu. Rezerwacje podają wydanie i datę. Tytuły prowadzą do szczegółów wydania, gdzie anuluje się zgłoszenie; lista konta nie ma osobnego przycisku anulowania. Bibliotekarz ma również własne konto.
+
+\noindent\textbf{Panel bibliotekarza}
+
+\texttt{/librarian} używa parametru \texttt{tab} dla czterech zakładek z tabeli~\ref{tab:zakladki-bibliotekarza}.
+
+\begin{table}[htbp]
+\centering
+\caption{Widoki i operacje panelu bibliotekarza. Opracowanie własne.}
+\label{tab:zakladki-bibliotekarza}
+\normalsize
+\begin{tabular}{@{}p{0.23\linewidth}p{0.69\linewidth}@{}}
+\toprule
+\textbf{Zakładka} & \textbf{Zawartość i operacje} \\
+\midrule
+Aktywne & Formularz nowego wypożyczenia, lista aktywnych
+wypożyczeń z rejestracją zwrotu oraz lista oczekujących
+rezerwacji z realizacją i anulowaniem. Wyszukiwanie i filtr
+wypożyczeń przeterminowanych. \\
+
+Archiwum & Historia zwróconych wypożyczeń oraz rezerwacji
+zrealizowanych lub anulowanych. Wyszukiwanie, paginacja
+i filtr statusu zakończonych rezerwacji. \\
+
+Księgozbiór & Wyszukiwanie wydań, dodawanie, edycja i usuwanie
+pozycji katalogowych. Obsługa egzemplarzy wybranego wydania
+oraz dodawanie, zmiana nazwy i usuwanie kategorii. \\
+
+Użytkownicy & Formularz zakładania konta czytelnika (pola WF-05),
+wyszukiwanie użytkowników, prezentacja danych
+i informacji o wypożyczeniach oraz blokowanie i odblokowywanie
+kont czytelników. \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Formularz wypożyczenia przyjmuje e-mail i numer inwentarzowy, rozpoznawane na serwerze; przyciski działań leżą przy rekordach. Formularz wydania obejmuje pola WF-18; wybór wydania otwiera jego egzemplarze (dodanie, ręczny status, usunięcie). Kategorie mają osobny komponent w Księgozbiorze. Autorów i wydawnictwa obsługuje zapis wydania. Użytkownicy umożliwiają zakładanie kont czytelników i zmianę aktywności, bez nadawania ról, usuwania kont i edycji cudzych profili.
+
+\noindent\textbf{Struktura nawigacji i zachowanie widoków}
+
+Rysunek~\ref{fig:nawigacja-aplikacji} pokazuje trasy i przejścia. URL przechowuje też zakładkę, wyszukiwanie, paginację i ID edytowanego wydania. Wylogowanie prowadzi do katalogu. Mutacje pokazują oczekiwanie i błędy przy komponencie, po zapisie odświeżają dane; puste listy mają własny komunikat. Schemat nawigacji nie zastępuje wymaganych makiet lub zrzutów ekranowych.
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[
+        width=\linewidth,
+        height=0.75\textheight,
+        keepaspectratio
+    ]{rysunki/nawigacja_aplikacji.pdf}
+    \caption{Struktura nawigacji BD2P. Dostępne odnośniki
+    zależą od sesji i roli; operacje rezerwacji w szczegółach
+    wydania wymagają zalogowania. Zakładki panelu są
+    częścią jednej trasy . Opracowanie własne.}
+    \label{fig:nawigacja-aplikacji}
+\end{figure}
+% DO UZUPEŁNIENIA: makiety lub zrzuty rzeczywistego interfejsu (wymóg 3.2.2).
+
 \subsubsection{Projekt wybranych funkcji systemu}
-\subsubsection{Metoda podłączania do bazy danych – integracja z bazą danych}
+\label{subsec:funkcje-systemu}
+
+Poniżej określono przebieg procedur; wymagania zawiera rozdział~\ref{sec:analiza-wymagan}, transakcje i ograniczenia współbieżności punkt~\ref{subsec:przetwarzanie-danych}.
+
+\noindent\textbf{Wyszukiwanie i filtrowanie katalogu}
+
+\texttt{book.filterOptions} pobiera autorów, wydawnictwa i kategorie. \texttt{book.list} przekazuje frazę, filtry, dostępność i paginację do \texttt{buildBookWhere}: dopasowania tekstowe i ewentualny rok łączy \texttt{OR}, dodatkowe filtry \texttt{AND}; \texttt{some} wymaga dostępnego egzemplarza. \texttt{count}/\texttt{findMany} zwracają \texttt{items}, \texttt{total}, \texttt{page}, \texttt{pageSize}; przesunięcie to \texttt{(page - 1) * pageSize}, kolejność rosnąca po tytule. Dostępność oblicza się ze statusów. \texttt{book.byId} zwraca szczegóły lub \texttt{NOT\_FOUND}.
+
+\noindent\textbf{Rezerwowanie wydania i anulowanie rezerwacji}
+
+\texttt{book.reserve(bookId)} bierze użytkownika z sesji i sprawdza kolejno aktywność (odmowa \texttt{FORBIDDEN}), istnienie wydania, brak dostępnych egzemplarzy i własnego \texttt{PENDING}. Zapisuje \texttt{PENDING} i zwraca ID; wydanie bez egzemplarzy też może być rezerwowane. Nie kontroluje limitu wypożyczeń i zaległości.
+
+\texttt{book.myReservation} odczytuje własne oczekujące zgłoszenie. \texttt{book.cancelReservation} filtruje po \texttt{bookId}, ID sesji i \texttt{PENDING}; ustawia \texttt{CANCELLED}, zwraca \texttt{ok: true}, a przy braku --- \texttt{NOT\_FOUND}. Bibliotekarz wskazuje \texttt{reservationId} w \texttt{librarian.cancelReservation}; wymagane są istnienie i stan oczekujący. Anulowanie zachowuje rekord.
+
+\noindent\textbf{Rejestrowanie wypożyczenia}
+
+\texttt{librarian.createLoan} rozpoznaje odbiorcę i egzemplarz według WF-13; podane ID ma pierwszeństwo przed polem alternatywnym. W transakcji \texttt{createLoanForCopy} używa \texttt{assertMemberCanBorrow}/\texttt{getBorrowBlockReason} do kontroli WF-14, następnie sprawdza egzemplarz. Zaległość oznacza \texttt{dueAt} wcześniejsze od bieżącej chwili bez zwrotu. Nazwa funkcji nie ogranicza odbiorcy do roli \texttt{MEMBER}. Zapis nadaje termin przez \texttt{addDays(now, LOAN\_DAYS)} (14 dni kalendarzowych, \texttt{Date.setDate}), status \texttt{LOANED} i przez \texttt{updateMany} realizuje wszystkie \texttt{PENDING} odbiorcy na to wydanie. Wynik: \texttt{ok: true}, \texttt{loanId}; błąd wycofuje zapisy.
+
+\noindent\textbf{Rejestrowanie zwrotu}
+
+\texttt{librarian.returnLoan(loanId)} w transakcji odczytuje wypożyczenie i status sztuki. Brak rekordu daje \texttt{NOT\_FOUND}, wcześniejszy zwrot --- \texttt{BAD\_REQUEST}. Zapisuje bieżące \texttt{returnedAt} i \texttt{AVAILABLE}, chyba że wcześniej odczytano \texttt{LOST}/\texttt{MAINTENANCE}; zwraca \texttt{ok: true}. Zachowuje historię, nie realizuje rezerwacji automatycznie ani nie nalicza opłat.
+
+\noindent\textbf{Realizacja rezerwacji przez bibliotekarza}
+
+\texttt{librarian.fulfillReservation(reservationId)} sprawdza w transakcji istnienie i \texttt{PENDING}, wybiera \texttt{AVAILABLE} według rosnącego \texttt{inventoryNo} (brak: \texttt{BAD\_REQUEST}) i wywołuje wspólne \texttt{createLoanForCopy} dla odbiorcy. Wynik: \texttt{ok: true}, \texttt{loanId}. Rezerwację wybiera bibliotekarz, bez wymuszania kolejki i bez FK do wypożyczenia. Rysunek~\ref{fig:przebieg-operacji} porównuje ścieżki powodzenia i granice transakcji.
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=\linewidth,height=0.84\textheight,keepaspectratio]
+        {rysunki/przebieg_rezerwacji_i_wypozyczenia.pdf}
+    \caption{Przebieg rezerwacji wydania i wypożyczenia egzemplarza.
+    Diagram przedstawia kolejne etapy ścieżek powodzenia;
+    niespełniony warunek przerywa operację . Opracowanie własne.}
+    \label{fig:przebieg-operacji}
+\end{figure}
+
+\noindent\textbf{Zarządzanie katalogiem i egzemplarzami}
+
+\texttt{librarian.createBook}/\texttt{updateBook} przyjmują dane wydania, nazwę wydawnictwa, tekst autorów i ID kategorii. Po wstępnej kontroli EAN funkcje \texttt{resolveBookRelations}, \texttt{resolvePublisherId}, \texttt{resolveAuthorId} wyszukują nazwy bez rozróżniania liter lub tworzą rekordy. \texttt{parseAuthorsText} rozdziela wpisy przecinkami; ostatni człon wpisu traktuje jako imię, wcześniejsze jako nazwisko. Kolejność wyznacza \texttt{authorOrder}. Edycja zastępuje przypisania autorów i kategorii we wspólnej transakcji; egzemplarze dodaje się osobno.
+
+\phantomsection\label{tab:operacje-katalogowe}
+Procedury routera \texttt{librarian} realizują: \texttt{addCopy} --- WF-20 (zwraca ID, numer i status); \texttt{updateCopyStatus} --- WF-21; \texttt{deleteCopy}/\texttt{deleteBook} --- WF-22; \texttt{createCategory}/\texttt{renameCategory}/\texttt{deleteCategory} --- WF-23. Tworzenie i zmiana nazwy kategorii sprawdzają zajętość bez rozróżniania liter; usunięcie wymaga istnienia i braku przypisań. Usunięcie wydania uruchamia opisane kaskady, w tym dla zakończonych rezerwacji.
+
+\noindent\textbf{Zakładanie kont i zarządzanie ich aktywnością}
+
+\texttt{librarian.createMember} przyjmuje dane WF-05 i hasło początkowe. Po kontroli formatu PESEL i zajętości e-maila haszuje hasło (\texttt{password.hash}), tworzy użytkownika przez \texttt{internalAdapter.createUser}, co uruchamia hooki Better Auth, i dowiązuje konto \texttt{credential} z hasłem przez \texttt{linkAccount}. Niepowodzenie dowiązania usuwa utworzonego użytkownika, aby nie pozostało konto bez możliwości logowania. Odmowy hooka i konflikty unikalności są mapowane na \texttt{BAD\_REQUEST}; rola i aktywność przyjmują wartości domyślne.
+
+\texttt{librarian.listUsers} zwraca stronicowane konta z licznikami aktywnych i przeterminowanych wypożyczeń. \texttt{setUserActive(userId, isActive)} odrzuca brak konta, własne konto i rolę inną niż \texttt{MEMBER}; zmienia tylko aktywność i zwraca \texttt{ok: true}. Nie usuwa historii, nie zmienia roli i nie odwołuje sesji; skutki blokady opisuje punkt~\ref{subsec:zalozenia-ograniczenia}.
+
+\subsubsection{Integracja aplikacji z bazą danych}
+\label{subsec:integracja-bazy}
+
+\texttt{src/server/db.ts} importuje klienta z \texttt{generated/prisma/client} i tworzy \texttt{PrismaPg} ze sterownikiem \texttt{pg}. Adres pochodzi z serwerowego \texttt{DATABASE\_URL}, odczytanego przez \texttt{src/env.js}. Eksport \texttt{db} jest poza produkcją zachowywany w \texttt{globalThis}, aby przeładowanie modułów mogło użyć tej samej instancji. Konkretny fragment konfiguracji przedstawia punkt~\ref{subsec:implementacja-dostepu}.
+
+\noindent\textbf{Wykonywanie zapytań w procedurach}
+
+\texttt{createTRPCContext} udostępnia \texttt{ctx.db}. Argumenty \texttt{where}, \texttt{data}, \texttt{select}, \texttt{include} parametryzują operacje tak samo dla HTTP i serwerowego \texttt{caller}. 
+
+\phantomsection\label{tab:operacje-prisma-aplikacji}
+Odczyt używa \texttt{findUnique}/\texttt{findFirst}, listy \texttt{findMany} z \texttt{orderBy}, \texttt{skip}, \texttt{take}, a agregacje \texttt{count}/\texttt{groupBy}. Zapis obejmuje \texttt{create}, \texttt{update}, \texttt{delete}, zbiorcze \texttt{updateMany} (rezerwacje) i \texttt{deleteMany} (przypisania).
+
+Relacyjne \texttt{some} filtruje powiązania, \texttt{include} pobiera np. egzemplarz i wydanie wypożyczenia, a \texttt{authors.create}/\texttt{categories.create} zapisuje przypisania. \texttt{select} ogranicza pola. Wyniki są mapowane na widoki; \texttt{user.me} spłaszcza dane i ogranicza historię do 50 zwrotów, bez poświadczeń.
+
+\noindent\textbf{Transakcje i obsługa błędów}
+
+\texttt{\$transaction} przekazuje \texttt{Prisma.TransactionClient}; tylko operacje tego klienta należą do wspólnej transakcji. Zakres i ograniczenia opisuje punkt~\ref{subsec:przetwarzanie-danych}. \texttt{TRPCError} sygnalizuje przewidywane odmowy, np. \texttt{NOT\_FOUND} lub \texttt{BAD\_REQUEST}. Konflikt unikalności wypożyczenia jest mapowany na komunikat biznesowy (punkt~\ref{subsec:implementacja-dostepu}); brak uniwersalnego mapowania wszystkich błędów Prisma. Formatter tRPC dołącza spłaszczone szczegóły \texttt{ZodError}; komponenty prezentują błędy i odświeżają dane. Daty obsługuje SuperJSON.
+
+\noindent\textbf{Granica serwer--przeglądarka}
+
+\texttt{db} pozostaje w modułach serwerowych, routerach i Better Auth. Moduł RSC używa \texttt{server-only}; przeglądarka importuje \texttt{AppRouter} przez \texttt{import type}, bez implementacji routera i konfiguracji połączenia. Bezpośredni \texttt{pg} ze stałym SQL służy przygotowaniu schematu, nie żądaniom użytkownika.
+
 \subsubsection{Projekt zabezpieczeń na poziomie aplikacji}
-Na poziomie aplikacji kontrola dostępu opiera się na sesji Better Auth oraz procedurach tRPC: odczyt katalogu realizowany jest jako procedura publiczna (\texttt{publicProcedure}), natomiast wypożyczenia i rezerwacje -- jako procedury chronione (\texttt{protectedProcedure}), wymagające ważnej sesji użytkownika. Panel bibliotekarza jest dodatkowo ograniczony do roli \texttt{LIBRARIAN}.
+\label{subsec:zabezpieczenia-aplikacji}
+
+Kontrole serwerowe obejmują sesję, rolę, własność danych i argumenty; widoczność elementów interfejsu nie zastępuje autoryzacji.
+
+\noindent\textbf{Uwierzytelnianie i obsługa sesji}
+
+Better Auth z \texttt{emailAndPassword.enabled} i \texttt{disableSignUp} obsługuje \texttt{signIn.email}, haszowanie, weryfikację haseł i sesje; publiczne \texttt{signUp.email} jest odrzucane.~\cite{better-auth-email} Skrót hasła należy do \texttt{Account}, nie \texttt{User}; API biblioteczne go nie zwraca. Sesja z nagłówków przez \texttt{auth.api.getSession} dostarcza tożsamości i roli. Wylogowanie używa \texttt{signOut}; strony także \texttt{getSession}. Domyślne \texttt{MEMBER} i \texttt{isActive = true} mają \texttt{input: false}, a \texttt{createMember} ich nie przyjmuje, więc nie można ich nadać przy zakładaniu konta.
+
+\noindent\textbf{Autoryzacja procedur}
+
+\begin{table}[htbp]
+\centering
+\caption{Autoryzacja procedur bibliotecznych. Opracowanie własne.}
+\label{tab:autoryzacja-aplikacji}
+\normalsize
+\begin{tabular}{@{}p{0.30\linewidth}p{0.62\linewidth}@{}}
+\toprule
+\textbf{Typ procedury} & \textbf{Warunek i przykłady} \\
+\midrule
+\texttt{publicProcedure} & Bez wymagania sesji; katalog,
+opcje filtrów i szczegóły wydania. \\
+
+\texttt{protectedProcedure} & Wymagana sesja użytkownika;
+własne konto, profil i rezerwacje. Brak sesji powoduje
+\texttt{UNAUTHORIZED}. \\
+
+\texttt{librarianProcedure} & Wymagana sesja i rola
+\texttt{LIBRARIAN}; operacje routera bibliotekarza.
+Brak sesji powoduje \texttt{UNAUTHORIZED}, a niewłaściwa
+rola \texttt{FORBIDDEN}. \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Kontrole API obowiązują również przy bezpośrednim żądaniu. Strony konta i panelu przekierowują gościa do logowania, a użytkownika bez roli bibliotekarza z panelu do katalogu.
+
+\noindent\textbf{Dostęp do własnych danych i operacji administracyjnych}
+
+\texttt{user.me}, \texttt{user.updateProfile} i własne rezerwacje wykorzystują \texttt{ctx.session.user.id}; klient nie wybiera właściciela. \texttt{protectedProcedure} samo nie ustanawia filtrów własności. Wszystkie procedury \texttt{librarian} wymagają \texttt{librarianProcedure}; nadal sprawdzają istnienie i reguły obiektu, w tym zakaz zmiany aktywności własnego konta oraz bibliotekarzy.
+
+\noindent\textbf{Walidacja wejścia}
+
+Schematy Zod w \texttt{.input(...)} sprawdzają typy, zakresy, identyfikatory i statusy (tabela~\ref{tab:walidacja-aplikacji}); procedury dodatkowo weryfikują istnienie i dopuszczalność operacji.
+
+\begin{table}[htbp]
+\centering
+\caption{Przykłady serwerowej walidacji argumentów. Opracowanie własne.}
+\label{tab:walidacja-aplikacji}
+\normalsize
+\begin{tabular}{@{}p{0.30\linewidth}p{0.62\linewidth}@{}}
+\toprule
+\textbf{Dane} & \textbf{Warunki} \\
+\midrule
+Katalog & Numer strony jako liczba całkowita co najmniej 1;
+rozmiar 50, 100 lub 200; zapytanie tekstowe do 200 znaków. \\
+
+Wydanie & Niepusty tytuł do 500 znaków, EAN do 32 znaków,
+liczba stron 1--50\,000 i rok wydania 1000--2100. \\
+
+Egzemplarz & Niepusty numer inwentarzowy do 64 znaków;
+ręczny status z określonego zbioru wartości. \\
+
+Profil & Imię i nazwisko po usunięciu skrajnych białych
+znaków: 1--100 znaków. Pusty telefon jest normalizowany
+do \texttt{null}. \\
+
+Nowy czytelnik & Imię i nazwisko 1--100 znaków po \texttt{trim},
+poprawny e-mail zapisywany małymi literami, telefon do 32 znaków
+(pusty pomijany), PESEL po normalizacji z 11 cyfr, hasło
+8--128 znaków. \\
+
+Aktywność konta & Niepusty identyfikator oraz logiczna
+wartość \texttt{isActive}. \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Zakładanie konta walidują schemat Zod procedury \texttt{createMember} oraz hooki Better Auth, które działają także przy wewnętrznym adapterze; schemat profilu tRPC w tym nie uczestniczy. Tworzenie normalizuje PESEL, wymaga 11 cyfr i sprawdza zajętość; aktualizacja odrzuca pole PESEL. Nie sprawdza sumy kontrolnej i daty urodzenia. EAN wymaga tekstu o dopuszczalnej długości, bez kontroli standardu i cyfry kontrolnej.
+
+\noindent\textbf{Ochrona konfiguracji i granice zabezpieczeń}
+
+\texttt{DATABASE\_URL} i \texttt{BETTER\_AUTH\_SECRET} są serwerowe. Sekret jest wymagany w produkcji, poza nią może go brakować; \texttt{SKIP\_ENV\_VALIDATION} omija sprawdzanie środowiska. Parametryzacja ORM nie zastępuje kontroli sesji i właściciela. Middleware nie wymaga globalnie \texttt{isActive}; dezaktywacja nie odwołuje sesji.
+
+Nie skonfigurowano 2FA, obowiązkowego potwierdzania e-maila, wysyłki odzyskiwania hasła, własnego ograniczania częstotliwości tRPC ani audytu administracyjnego. Logowanie Prisma służy diagnostyce. Ochrona transportu wymaga konfiguracji wdrożenia. Autoryzacja nie eliminuje ograniczeń współbieżności z punktu~\ref{subsec:przetwarzanie-danych}.
 
 \section{Implementacja systemu baz danych}
 Implementacja i testy bazy danych w wybranym systemie zarządzania bazą danych.
 
-\subsection{Tworzenie tabel i definiowanie ograniczeń}
+\subsection{Tworzenie struktury bazy i definiowanie ograniczeń}
 \subsection{Implementacja mechanizmów przetwarzania danych}
-\subsection{Implementacja uprawnień i innych zabezpieczeń}
-\subsection{Testowanie bazy danych na przykładowych danych}
+\subsection{Implementacja uprawnień i zabezpieczeń}
+\subsection{Dane testowe i testowanie bazy danych}
 
 \section{Implementacja i testy aplikacji}
 Skrócone sprawozdanie z etapu implementacji i testowania aplikacji.
 
-\subsection{Instalacja i konfigurowanie systemu}
+\subsection{Instalacja i konfiguracja systemu}
 \subsection{Instrukcja użytkowania aplikacji}
 \subsection{Testowanie opracowanych funkcji systemu}
+
 \subsection{Omówienie wybranych rozwiązań programistycznych}
+
+\newcounter{bdcode}[subsection]
+\renewcommand{\thebdcode}{\thesubsection.\arabic{bdcode}}
+
 \subsubsection{Implementacja interfejsu dostępu do bazy danych}
+\label{subsec:implementacja-dostepu}
+
+Moduł \texttt{src/server/db.ts} tworzy Prisma z adapterem \texttt{PrismaPg} i serwerowym adresem połączenia. Listing~\ref{lst:db-client} pokazuje konfigurację; poza produkcją \texttt{globalForPrisma.prisma}/\texttt{globalThis} pozwala ponownie wykorzystać instancję. Dziennik rejestruje zapytania, błędy i ostrzeżenia w trybie programistycznym, poza nim tylko błędy.
+
+\refstepcounter{bdcode}
+\noindent\textbf{Listing \thebdcode. Konfiguracja klienta Prisma}
+\label{lst:db-client}
+\par\nopagebreak
+{\normalsize
+\noindent Źródło: \texttt{src/server/db.ts} (fragment).
+\par\nopagebreak
+\begin{verbatim}
+const createPrismaClient = () =>
+  new PrismaClient({
+    adapter: new PrismaPg({
+      connectionString: env.DATABASE_URL,
+    }),
+    log:
+      env.NODE_ENV === "development"
+        ? ["query", "error", "warn"]
+        : ["error"],
+  });
+\end{verbatim}
+}
+
+\phantomsection\label{lst:context}
+\texttt{createTRPCContext} (\texttt{src/server/api/trpc.ts}) odczytuje sesję przez \texttt{auth.api.getSession(\{ headers: opts.headers \})} i zwraca \texttt{db}, \texttt{session} oraz \texttt{...opts}. Parametry trafiają do obiektów Prisma, np. \texttt{where: \{ userId, returnedAt: null \}}; \texttt{select}/\texttt{include} dobierają pola i relacje. W \texttt{user.me} funkcja \texttt{mapLoan} mapuje wypożyczenie z egzemplarzem i wydaniem; \texttt{book.list} zwraca pozycje, licznik i stronę. Daty serializuje SuperJSON.
+
+Granica transakcji i przekazanie klienta funkcji domenowej są pokazane w listingu~\ref{lst:loan-tx}, w punkcie~\ref{subsec:implementacja-funkcji}.
+
+
+
+\texttt{isUniqueViolation} w \texttt{src/lib/library-rules.ts} rozpoznaje \texttt{P2002}, PostgreSQL \texttt{23505} lub nazwę indeksu aktywnego wypożyczenia. \texttt{createLoanForCopy} zamienia konflikt na \texttt{BAD\_REQUEST} z informacją o aktywnym wypożyczeniu; inne wyjątki zgłasza ponownie. Nie ma uniwersalnego mapowania wszystkich błędów bazy.
+
 \subsubsection{Implementacja wybranych funkcjonalności systemu}
+\label{subsec:implementacja-funkcji}
+
+\noindent\textbf{Wspólna operacja wypożyczenia}
+\phantomsection\label{lst:loan-create}
+
+Listing~\ref{lst:loan-tx} przekazuje klienta transakcyjnego do wspólnej funkcji wypożyczenia. Wyjątek wycofuje zapisy.
+
+\refstepcounter{bdcode}
+\noindent\textbf{Listing \thebdcode. Wywołanie operacji w transakcji}
+\label{lst:loan-tx}
+\par\nopagebreak
+{\normalsize
+\noindent Źródło: \texttt{src/server/api/routers/librarian.ts} (fragment).
+\par\nopagebreak
+\begin{verbatim}
+return ctx.db.$transaction(async (tx) => {
+  const result = await createLoanForCopy(tx, {
+    copyId,
+    userId,
+  });
+  return { ok: true as const, loanId: result.loanId };
+});
+\end{verbatim}
+}
+
+\texttt{createLoanForCopy} przyjmuje \texttt{Prisma.TransactionClient}, \texttt{copyId} i \texttt{userId}. Po kontrolach z punktu~\ref{subsec:funkcje-systemu} zapisuje \texttt{Loan} z \texttt{loanedAt: now}, \texttt{dueAt: addDays(now, LOAN\_DAYS)} i zwraca ID. Następnie ustawia \texttt{LOANED} i przez \texttt{updateMany} realizuje pasujące \texttt{PENDING}. Zwykłe wypożyczenie i realizacja rezerwacji współdzielą tę funkcję.
+
+\noindent\textbf{Rezerwacja wydania}
+\phantomsection\label{lst:reserve-check}
+
+\texttt{book.reserve} w \texttt{src/server/api/routers/book.ts} po kontrolach konta i dostępności używa \texttt{reservation.findFirst} z \texttt{bookId}, \texttt{userId} z sesji, \texttt{status: "PENDING"} i wyborem ID. Wynik powoduje \texttt{BAD\_REQUEST}; jego brak --- \texttt{reservation.create} z tymi samymi danymi i zwrotem ID. Odczyty i zapis nie mają wspólnej jawnej transakcji ani gwarancji unikalności przy współbieżności.
+
+\noindent\textbf{Realizacja rezerwacji}
+\phantomsection\label{lst:fulfill-copy}
+
+\texttt{librarian.fulfillReservation} używa \texttt{tx.copy.findFirst} z \texttt{bookId: reservation.bookId}, \texttt{status: "AVAILABLE"}, \texttt{select: \{ id: true \}} i \texttt{orderBy: \{ inventoryNo: "asc" \}}. Wynik przekazuje wraz z \texttt{reservation.userId} do \texttt{createLoanForCopy}; transakcja zwraca \texttt{ok} i \texttt{loanId}. Sortowanie dotyczy egzemplarzy, nie kolejki rezerwacji.
+
+\noindent\textbf{Składanie warunków katalogu}
+\phantomsection\label{lst:catalog-filter}
+
+\texttt{buildBookWhere} zwraca \texttt{Prisma.BookWhereInput}; dostępność dodaje do \texttt{AND} warunek \texttt{copies: \{ some: \{ status: "AVAILABLE" \} \}}. \texttt{book.list} używa wspólnego \texttt{where} w \texttt{count} i \texttt{findMany}, z \texttt{skip}, \texttt{take}, \texttt{orderBy: \{ title: "asc" \}}. Filtr działa w bazie. \texttt{Promise.all} zapewnia równoległe wykonanie, lecz nie wspólny obraz transakcyjny.
+
 \subsubsection{Implementacja mechanizmów bezpieczeństwa}
+\label{subsec:implementacja-bezpieczenstwa}
+
+\noindent\textbf{Sesja i autoryzacja procedur}
+
+\texttt{src/server/better-auth/config.ts} włącza \texttt{emailAndPassword.enabled} z \texttt{disableSignUp: true} oraz \texttt{prismaAdapter(db, \{ provider: "postgresql" \})}. Sesja trafia do kontekstu opisanego w punkcie~\ref{subsec:implementacja-dostepu}. Listing~\ref{lst:auth-check} pokazuje kontrole serwerowe; middleware nie wymaga globalnie aktywności. \texttt{role}/\texttt{isActive} mają \texttt{input: false} w konfiguracji pól użytkownika.
+
+\refstepcounter{bdcode}
+\noindent\textbf{Listing \thebdcode. Kontrole protectedProcedure i librarianProcedure}
+\label{lst:auth-check}
+\par\nopagebreak
+{\normalsize
+\noindent Źródło: \texttt{src/server/api/trpc.ts} (fragment).
+\par\nopagebreak
+\begin{verbatim}
+// protectedProcedure: fragment middleware
+if (!ctx.session?.user) {
+  throw new TRPCError({ code: "UNAUTHORIZED" });
+}
+
+// librarianProcedure: fragment middleware
+if (!ctx.session?.user) {
+  throw new TRPCError({ code: "UNAUTHORIZED" });
+}
+const role = (ctx.session.user as { role?: string }).role;
+if (role !== "LIBRARIAN") {
+  throw new TRPCError({
+    code: "FORBIDDEN",
+    message: "Dostęp tylko dla bibliotekarza",
+  });
+}
+\end{verbatim}
+}
+
+\noindent\textbf{Własność danych i walidacja}
+
+\texttt{user.updateProfile} przyjmuje w schemacie Zod tylko \texttt{firstName}, \texttt{lastName} i \texttt{phone}; zapis filtruje \texttt{where: \{ id: ctx.session.user.id \}} i jawnie wylicza te pola. \texttt{requiredNamePart} wymaga 1--100 znaków po \texttt{trim}; \texttt{optionalPhone} zamienia pusty telefon na \texttt{null}. Pominięte \texttt{name} jest wyprowadzane z imienia i nazwiska, \texttt{select} ogranicza wynik. ID pochodzi z sesji; jawne pola \texttt{data} ograniczają zakres zapisu. Tak samo filtrowane są własne rezerwacje. Zod i parametryzacja nie zastępują sprawdzenia własności.
+
+\phantomsection\label{lst:profile}
+
+\noindent\textbf{Kontrola numeru PESEL i reguł konta}
+\phantomsection\label{lst:pesel}
+
+\texttt{src/lib/pesel.ts}: \texttt{normalizePesel} usuwa białe znaki, \texttt{isValidPesel} sprawdza \verb|/^\d{11}$/|, bez sumy kontrolnej i daty urodzenia. Hook tworzenia Better Auth, uruchamiany także przez \texttt{createMember}, normalizuje, sprawdza format i zajętość; \texttt{update.before} odrzuca obecność pola PESEL przez \texttt{APIError("BAD\_REQUEST")} z komunikatem o niezmienności. Hook nie obejmuje dowolnego SQL, a procedura profilu również nie pozwala zmienić PESEL. \texttt{setUserActive} chroni własne konto i role inne niż \texttt{MEMBER}; blokada nie odwołuje sesji.
 
 \section{Podsumowanie i wnioski}
 % Miejsce na treść
@@ -173,15 +1109,47 @@ Skrócone sprawozdanie z etapu implementacji i testowania aplikacji.
 \newpage
 % --- Sekcje końcowe ---
 
+\phantomsection
 \addcontentsline{toc}{section}{Literatura}
 \begin{thebibliography}{9}
-    \bibitem{ksiazka} 
-    Nazwisko I., \textit{Tytuł książki}, Wydawnictwo, Rok wydania.
+\bibitem{prisma-postgresql}
+Prisma, \textit{PostgreSQL (Prisma ORM v7), sekcja Type mappings}.
+\url{https://www.prisma.io/docs/orm/v7/core-concepts/supported-databases/postgresql}. Dostęp: 15.10.2026.
+
+\bibitem{prisma-schema}
+Prisma, \textit{Schema API (Prisma ORM v7)}.
+\url{https://www.prisma.io/docs/orm/v7/reference/prisma-schema-reference}. Dostęp: 15.10.2026.
+
+\bibitem{prisma-referential}
+Prisma, \textit{Referential actions (Prisma ORM v7)}.
+\url{https://www.prisma.io/docs/orm/v7/prisma-schema/data-model/relations/referential-actions}. Dostęp: 15.10.2026.
+
+\bibitem{postgres-constraints}
+PostgreSQL Global Development Group, \textit{PostgreSQL 18 Documentation: Constraints}.
+\url{https://www.postgresql.org/docs/current/ddl-constraints.html}. Dostęp: 15.10.2026.
+
+\bibitem{postgres-partial}
+PostgreSQL Global Development Group, \textit{PostgreSQL 18 Documentation: Partial Indexes}.
+\url{https://www.postgresql.org/docs/current/indexes-partial.html}. Dostęp: 15.10.2026.
+
+\bibitem{postgres-trigger}
+PostgreSQL Global Development Group, \textit{PostgreSQL 18 Documentation: CREATE TRIGGER}.
+\url{https://www.postgresql.org/docs/current/sql-createtrigger.html}. Dostęp: 15.10.2026.
+
+\bibitem{prisma-transactions}
+Prisma, \textit{Transactions and batch queries (Prisma ORM v7)}.
+\url{https://www.prisma.io/docs/orm/v7/prisma-client/queries/transactions}. Dostęp: 15.10.2026.
+
+\bibitem{better-auth-email}
+Better Auth, \textit{Email \& Password}.
+\url{https://better-auth.com/docs/authentication/email-password}. Dostęp: 15.10.2026.
 \end{thebibliography}
 
+\phantomsection
 \addcontentsline{toc}{section}{Spis rysunków}
 \listoffigures
 
+\phantomsection
 \addcontentsline{toc}{section}{Spis tabel}
 \listoftables
 

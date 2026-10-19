@@ -56,20 +56,12 @@ export async function Header() {
 							</form>
 						</>
 					) : (
-						<>
-							<Link
-								className="text-stone-600 transition hover:text-teal-800"
-								href="/login"
-							>
-								Zaloguj
-							</Link>
-							<Link
-								className="rounded-md bg-stone-900 px-3 py-1.5 font-medium text-white transition hover:bg-teal-800"
-								href="/register"
-							>
-								Zarejestruj
-							</Link>
-						</>
+						<Link
+							className="rounded-md bg-stone-900 px-3 py-1.5 font-medium text-white transition hover:bg-teal-800"
+							href="/login"
+						>
+							Zaloguj
+						</Link>
 					)}
 				</nav>
 			</div>

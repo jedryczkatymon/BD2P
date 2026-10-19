@@ -11,6 +11,9 @@ export const auth = betterAuth({
 	}),
 	emailAndPassword: {
 		enabled: true,
+		// Konta czytelników zakłada bibliotekarz (librarian.createMember);
+		// publiczny endpoint /sign-up/email jest wyłączony.
+		disableSignUp: true,
 	},
 	user: {
 		additionalFields: {

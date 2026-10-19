@@ -6,6 +6,7 @@ import { ActiveReservationsTable } from "~/components/active-reservations-table"
 import { CatalogAdmin } from "~/components/catalog-admin";
 import { CategoryAdmin } from "~/components/category-admin";
 import { CreateLoanForm } from "~/components/create-loan-form";
+import { CreateMemberForm } from "~/components/create-member-form";
 import { LibrarianPagination } from "~/components/librarian-pagination";
 import { LibrarianSearchForm } from "~/components/librarian-search-form";
 import { LibrarianTabs } from "~/components/librarian-tabs";
@@ -124,27 +125,39 @@ async function UsersTab({
 	const data = await api.librarian.listUsers({ page, pageSize, q });
 
 	return (
-		<div className="mt-6">
-			<h2 className="font-medium text-stone-900">Użytkownicy ({data.total})</h2>
-			<div className="mt-3">
-				<LibrarianSearchForm
-					actionTab="users"
-					pageSize={pageSize}
-					placeholder="Imię, nazwisko, e-mail, telefon, PESEL…"
-					q={q}
-				/>
-			</div>
-			<UsersTable currentUserId={data.currentUserId} items={data.items} />
-			<div className="mt-4">
-				<LibrarianPagination
-					emptyLabel="Brak użytkowników"
-					filters={{ q, pageSize }}
-					page={data.page}
-					pageSize={pageSize}
-					tab="users"
-					total={data.total}
-				/>
-			</div>
+		<div className="mt-6 space-y-10">
+			<section>
+				<h2 className="font-medium text-stone-900">Nowy czytelnik</h2>
+				<p className="mt-1 text-sm text-stone-600">
+					Załóż konto czytelnika; zaloguje się podanym e-mailem i hasłem.
+				</p>
+				<CreateMemberForm />
+			</section>
+
+			<section>
+				<h2 className="font-medium text-stone-900">
+					Użytkownicy ({data.total})
+				</h2>
+				<div className="mt-3">
+					<LibrarianSearchForm
+						actionTab="users"
+						pageSize={pageSize}
+						placeholder="Imię, nazwisko, e-mail, telefon, PESEL…"
+						q={q}
+					/>
+				</div>
+				<UsersTable currentUserId={data.currentUserId} items={data.items} />
+				<div className="mt-4">
+					<LibrarianPagination
+						emptyLabel="Brak użytkowników"
+						filters={{ q, pageSize }}
+						page={data.page}
+						pageSize={pageSize}
+						tab="users"
+						total={data.total}
+					/>
+				</div>
+			</section>
 		</div>
 	);
 }
@@ -318,7 +331,7 @@ async function ArchiveTab({
 					<LibrarianSearchForm
 						actionTab="archive"
 						extraFields={
-							<label className="min-w-[10rem]">
+							<label className="min-w-40">
 								<span className="mb-1 block font-medium text-stone-500 text-xs uppercase tracking-wide">
 									Status
 								</span>

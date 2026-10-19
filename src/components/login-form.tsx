@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
@@ -86,10 +85,7 @@ export function LoginForm() {
 			</button>
 
 			<p className="text-center text-sm text-stone-600">
-				Nie masz konta?{" "}
-				<Link className="text-teal-800 hover:underline" href="/register">
-					Zarejestruj się
-				</Link>
+				Nie masz konta? Konto czytelnika zakłada bibliotekarz w bibliotece.
 			</p>
 		</form>
 	);

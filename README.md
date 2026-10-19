@@ -93,10 +93,9 @@ Aplikacja działa na Vercel ([https://bd2p.vercel.app/](https://bd2p.vercel.app/
 | -------------- | -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `/`            | publiczny            | Katalog książek: wyszukiwanie (tytuł, EAN, autor, wydawnictwo, kategoria, rok), filtry (autor, wydawnictwo, kategoria, tylko dostępne), paginacja 50 / 100 / 200 na stronę.       |
 | `/books/[id]`  | publiczny            | Szczegóły książki, liczba egzemplarzy (dostępne / wypożyczone / inne). Zalogowany czytelnik może złożyć lub anulować rezerwację.                                                  |
-| `/login`       | niezalogowany        | Logowanie (email + hasło). Zalogowanego przekierowuje na `/account`.                                                                                                              |
-| `/register`    | niezalogowany        | Rejestracja; imię, nazwisko i PESEL (11 cyfr) są obowiązkowe, telefon opcjonalny.                                                                                                               |
+| `/login`       | niezalogowany        | Logowanie (email + hasło) na konto założone przez bibliotekarza. Zalogowanego przekierowuje na `/account`.                                                                                                            |
 | `/account`     | zalogowany           | Profil (edycja imienia, nazwiska, telefonu; e-mail i rola tylko do odczytu), aktywne wypożyczenia, historia (ostatnie 50), aktywne rezerwacje.                                    |
-| `/librarian`   | tylko `LIBRARIAN`    | Panel bibliotekarza z zakładkami: **Aktywne** (wypożyczenia z filtrem przeterminowanych, rezerwacje), **Archiwum** (historia wypożyczeń i rezerwacji), **Księgozbiór** (książki, egzemplarze, kategorie), **Użytkownicy**. Pozostali są przekierowywani na `/login` lub `/`. |
+| `/librarian`   | tylko `LIBRARIAN`    | Panel bibliotekarza z zakładkami: **Aktywne** (wypożyczenia z filtrem przeterminowanych, rezerwacje), **Archiwum** (historia wypożyczeń i rezerwacji), **Księgozbiór** (książki, egzemplarze, kategorie), **Użytkownicy** (zakładanie kont czytelników, blokowanie). Pozostali są przekierowywani na `/login` lub `/`. |
 
 Wyszukiwanie i paginacja w obu widokach (katalog, panel) są oparte o parametry URL ([src/lib/catalog-query.ts](src/lib/catalog-query.ts), [src/lib/librarian-query.ts](src/lib/librarian-query.ts)).
 
@@ -109,7 +108,7 @@ Routery zarejestrowane w [src/server/api/root.ts](src/server/api/root.ts):
 | `book`      | `list`, `byId`, `filterOptions`                                                                                                                                                                                                                                                                            | publiczny             |
 | `book`      | `reserve`, `cancelReservation`, `myReservation`                                                                                                                                                                                                                                                            | zalogowany            |
 | `user`      | `me`, `updateProfile`                                                                                                                                                                                                                                                                                      | zalogowany            |
-| `librarian` | wypożyczenia (`createLoan`, `returnLoan`, `listActiveLoans`, `listLoanHistory`), rezerwacje (`listActiveReservations`, `listReservationHistory`, `fulfillReservation`, `cancelReservation`), książki i egzemplarze (`listBooks`, `getBookWithCopies`, `createBook`, `updateBook`, `deleteBook`, `addCopy`, `updateCopyStatus`, `deleteCopy`), kategorie (`listCategories`, `createCategory`, `renameCategory`, `deleteCategory`), użytkownicy (`listUsers`, `setUserActive`, `findMemberByEmail`) | tylko `LIBRARIAN`     |
+| `librarian` | wypożyczenia (`createLoan`, `returnLoan`, `listActiveLoans`, `listLoanHistory`), rezerwacje (`listActiveReservations`, `listReservationHistory`, `fulfillReservation`, `cancelReservation`), książki i egzemplarze (`listBooks`, `getBookWithCopies`, `createBook`, `updateBook`, `deleteBook`, `addCopy`, `updateCopyStatus`, `deleteCopy`), kategorie (`listCategories`, `createCategory`, `renameCategory`, `deleteCategory`), użytkownicy (`listUsers`, `createMember`, `setUserActive`, `findMemberByEmail`) | tylko `LIBRARIAN`     |
 
 Typy procedur w [src/server/api/trpc.ts](src/server/api/trpc.ts):
 
@@ -122,7 +121,8 @@ Typy procedur w [src/server/api/trpc.ts](src/server/api/trpc.ts):
 Świadomie nie zaimplementowano (lub nie dokończono):
 
 - **Reset hasła** — nie ma procedury „zapomniałem hasła”; hasło nie może być odzyskane przez użytkownika.
-- **Weryfikacja e-maila** — rejestracja nie wymaga potwierdzenia adresu (`emailVerified` nie jest sprawdzane).
+- **Samodzielna rejestracja** — wyłączona (`emailAndPassword.disableSignUp`); konto czytelnika zakłada bibliotekarz w zakładce „Użytkownicy” (`librarian.createMember`), podając dane i hasło początkowe.
+- **Weryfikacja e-maila** — zakładanie konta nie wymaga potwierdzenia adresu (`emailVerified` nie jest sprawdzane).
 - **Zarządzanie autorami i wydawnictwami** — brak osobnych ekranów; rekordy `Author` i `Publisher` powstają automatycznie przy zapisie książki (bez edycji i usuwania).
 - **Kolejność rezerwacji (FIFO)** — nie jest wymuszana; bibliotekarz sam wybiera rezerwację do realizacji, a zwrot książki nie uruchamia automatycznie żadnej rezerwacji.
 - **Suma kontrolna PESEL** — sprawdzany jest tylko format (11 cyfr), nie poprawność sumy kontrolnej ani data urodzenia.
@@ -203,8 +203,8 @@ Liczba dostępnych sztuk **nie** jest osobną kolumną — wynika z liczby rekor
 - Rola `ADMIN` zastąpiona przez `LIBRARIAN` (`enum Role { LIBRARIAN, MEMBER }`).
 - `User.firstName` i `User.lastName` są obowiązkowe (także w `additionalFields` Better Auth).
 - `User.name` (wymagane przez Better Auth) jest polem pochodnym: `firstName + " " + lastName`, aktualizowanym przy edycji profilu.
-- `User.pesel` jest obowiązkowy (`String @unique`, wcześniej opcjonalny) i niezmienny po rejestracji.
-- Pola `role` i `isActive` nie są ustawiane przez użytkownika przy rejestracji (`input: false`); domyślnie `MEMBER` i `true`.
+- `User.pesel` jest obowiązkowy (`String @unique`, wcześniej opcjonalny) i niezmienny po utworzeniu konta.
+- Pola `role` i `isActive` nie są ustawiane przy zakładaniu konta (`input: false`); domyślnie `MEMBER` i `true`.
 
 ## Relacje
 
@@ -286,7 +286,7 @@ Reguły egzekwowane w aplikacji (głównie w [src/server/api/routers/librarian.t
 1. Bibliotekarz może blokować / odblokowywać (`isActive`) tylko konta `MEMBER` i nie może zmienić statusu własnego konta.
 2. Lista użytkowników (tylko bibliotekarz) pokazuje m.in. PESEL oraz liczbę aktywnych i przeterminowanych wypożyczeń; wyszukiwarka filtruje po imieniu, nazwisku, e-mailu, telefonie i PESEL.
 3. Czytelnik może edytować tylko imię, nazwisko i telefon; PESEL, rola i e-mail są tylko do odczytu.
-4. **PESEL jest wymagany przy rejestracji** (dokładnie 11 cyfr, unikalny — weryfikowane w `databaseHooks.user.create.before` w [src/server/better-auth/config.ts](src/server/better-auth/config.ts) oraz w formularzu). Po rejestracji nie można go zmienić: `updateProfile` go nie przyjmuje, a hook `databaseHooks.user.update.before` odrzuca zmianę przez Better Auth. Walidacja obejmuje format, nie sumę kontrolną.
+4. **PESEL jest wymagany przy zakładaniu konta** (dokładnie 11 cyfr, unikalny — weryfikowane w `databaseHooks.user.create.before` w [src/server/better-auth/config.ts](src/server/better-auth/config.ts) oraz w formularzu bibliotekarza). Po utworzeniu konta nie można go zmienić: `updateProfile` go nie przyjmuje, a hook `databaseHooks.user.update.before` odrzuca zmianę przez Better Auth. Walidacja obejmuje format, nie sumę kontrolną.
 5. Kolumna `User.pesel` w schemacie jest wymagana i unikalna (`String @unique`), a baza dodatkowo pilnuje formatu przez CHECK `user_pesel_format` (dokładnie 11 cyfr).
 
 ### Integralność katalogu
@@ -329,7 +329,7 @@ Do zrobienia:
 - [prisma/apply-constraints.ts](prisma/apply-constraints.ts) — skrypt nakładający ograniczenia (`pnpm db:constraints`).
 - [src/lib](src/lib) — czyste funkcje współdzielone z testami: `pesel.ts`, `library-rules.ts`, `loan-limits.ts`, `catalog-query.ts`, `librarian-query.ts`.
 - [tests](tests) i [vitest.config.ts](vitest.config.ts) — testy jednostkowe (`tests/unit`) i integracyjne bazy (`tests/db`), `pnpm test`.
-- [src/app](src/app) — strony Next.js (`/`, `/books/[id]`, `/login`, `/register`, `/account`, `/librarian`).
+- [src/app](src/app) — strony Next.js (`/`, `/books/[id]`, `/login`, `/account`, `/librarian`).
 - [src/components](src/components) — komponenty UI (katalog, formularze, tabele panelu bibliotekarza).
 - [src/server/api/routers](src/server/api/routers) — routery tRPC: `book`, `user`, `librarian`.
 - [src/server/better-auth/config.ts](src/server/better-auth/config.ts) — konfiguracja Better Auth (pola dodatkowe użytkownika).
