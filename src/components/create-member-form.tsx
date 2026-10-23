@@ -3,6 +3,11 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
+import {
+	AddressFields,
+	type AddressFormValue,
+	emptyAddress,
+} from "~/components/address-fields";
 import { isValidPesel, normalizePesel } from "~/lib/pesel";
 import { api } from "~/trpc/react";
 
@@ -18,6 +23,7 @@ export function CreateMemberForm() {
 	const [lastName, setLastName] = useState("");
 	const [phone, setPhone] = useState("");
 	const [pesel, setPesel] = useState("");
+	const [address, setAddress] = useState<AddressFormValue>(emptyAddress);
 	const [error, setError] = useState<string | null>(null);
 	const [message, setMessage] = useState<string | null>(null);
 
@@ -33,6 +39,7 @@ export function CreateMemberForm() {
 			setLastName("");
 			setPhone("");
 			setPesel("");
+			setAddress(emptyAddress());
 			router.refresh();
 		},
 		onError: (err) => {
@@ -58,6 +65,9 @@ export function CreateMemberForm() {
 			email: email.trim(),
 			phone: phone.trim() || undefined,
 			pesel: normalizedPesel,
+			street: address.street.trim(),
+			postalCode: address.postalCode,
+			city: address.city.trim(),
 			password,
 		});
 	}
@@ -161,6 +171,17 @@ export function CreateMemberForm() {
 					</p>
 				</div>
 			</div>
+
+			<AddressFields
+				className="max-w-2xl"
+				idPrefix="member"
+				inputClassName={inputClassName}
+				labelClassName={labelClassName}
+				onChange={setAddress}
+				postalCodeMode="pl"
+				required
+				value={address}
+			/>
 
 			{error && (
 				<p className="text-red-700 text-sm" role="alert">

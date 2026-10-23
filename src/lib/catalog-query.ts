@@ -8,7 +8,9 @@ export type CatalogFilterValues = {
 	q?: string;
 	authorId?: string;
 	publisherId?: string;
-	categoryId?: string;
+	genreId?: string;
+	languageCode?: string;
+	authorCountryCode?: string;
 	availableOnly?: boolean;
 	pageSize: PageSize;
 };
@@ -30,7 +32,11 @@ export function buildCatalogHref(
 	if (filters.q) params.set("q", filters.q);
 	if (filters.authorId) params.set("authorId", filters.authorId);
 	if (filters.publisherId) params.set("publisherId", filters.publisherId);
-	if (filters.categoryId) params.set("categoryId", filters.categoryId);
+	if (filters.genreId) params.set("genreId", filters.genreId);
+	if (filters.languageCode) params.set("languageCode", filters.languageCode);
+	if (filters.authorCountryCode) {
+		params.set("authorCountryCode", filters.authorCountryCode);
+	}
 	if (filters.availableOnly) params.set("available", "1");
 	return `/?${params.toString()}`;
 }

@@ -18,7 +18,8 @@ type LoanRow = {
 		firstName: string;
 		lastName: string;
 	};
-	book: { id: string; title: string; ean: string };
+	work: { id: string; title: string };
+	edition: { id: string; ean: string };
 };
 
 function formatDate(date: Date) {
@@ -79,11 +80,11 @@ export function ActiveLoansTable({ items }: ActiveLoansTableProps) {
 							<td className="px-3 py-2">
 								<Link
 									className="font-medium text-stone-900 hover:text-teal-800"
-									href={`/books/${loan.book.id}`}
+									href={`/books/${loan.work.id}`}
 								>
-									{loan.book.title}
+									{loan.work.title}
 								</Link>
-								<p className="text-stone-500 text-xs">EAN {loan.book.ean}</p>
+								<p className="text-stone-500 text-xs">EAN {loan.edition.ean}</p>
 							</td>
 							<td className="px-3 py-2 font-mono text-stone-700">
 								{loan.inventoryNo}

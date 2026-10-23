@@ -2,25 +2,11 @@
 -- Plik jest idempotentny: można go uruchamiać wielokrotnie (`pnpm db:constraints`).
 -- Uruchamiany automatycznie po `pnpm db:push` oraz na początku `pnpm db:seed`.
 
--- 1. Naprawa ewentualnych rozbieżności Copy.status <-> Loan -----------------
+-- 1. Usunięcie dawnej synchronizacji Copy.status <-> Loan ------------------
+--   Status egzemplarza opisuje tylko stan techniczny; wypożyczenie wynika z Loan.
 
--- Egzemplarz oznaczony jako wypożyczony, ale bez aktywnego wypożyczenia.
-UPDATE "Copy" c
-SET "status" = 'AVAILABLE', "updatedAt" = now()
-WHERE c."status" = 'LOANED'
-  AND NOT EXISTS (
-    SELECT 1 FROM "Loan" l
-    WHERE l."copyId" = c."id" AND l."returnedAt" IS NULL
-  );
-
--- Egzemplarz dostępny, ale z aktywnym wypożyczeniem.
-UPDATE "Copy" c
-SET "status" = 'LOANED', "updatedAt" = now()
-WHERE c."status" = 'AVAILABLE'
-  AND EXISTS (
-    SELECT 1 FROM "Loan" l
-    WHERE l."copyId" = c."id" AND l."returnedAt" IS NULL
-  );
+DROP TRIGGER IF EXISTS loan_sync_copy_status ON "Loan";
+DROP FUNCTION IF EXISTS sync_copy_status_on_loan();
 
 -- 2. Co najwyżej jedno aktywne wypożyczenie na egzemplarz --------------------
 
@@ -40,35 +26,107 @@ ALTER TABLE "user" DROP CONSTRAINT IF EXISTS user_pesel_format;
 ALTER TABLE "user"
   ADD CONSTRAINT user_pesel_format CHECK ("pesel" ~ '^[0-9]{11}$');
 
--- 4. Synchronizacja Copy.status z wypożyczeniami ----------------------------
---   * nowe aktywne wypożyczenie: AVAILABLE -> LOANED
---   * zwrot: LOANED -> AVAILABLE (o ile nie ma innego aktywnego wypożyczenia)
---   * statusy LOST i MAINTENANCE nigdy nie są zmieniane przez trigger.
+-- 3c. Słowniki krajów i języków: kody ISO ----------------------------------
 
-CREATE OR REPLACE FUNCTION sync_copy_status_on_loan() RETURNS trigger AS $$
+ALTER TABLE "Country" DROP CONSTRAINT IF EXISTS country_code_format;
+ALTER TABLE "Country"
+  ADD CONSTRAINT country_code_format CHECK ("code" ~ '^[A-Z]{2}$');
+
+ALTER TABLE "Language" DROP CONSTRAINT IF EXISTS language_code_format;
+ALTER TABLE "Language"
+  ADD CONSTRAINT language_code_format CHECK ("code" ~ '^[a-z]{2}$');
+
+-- 3d. Atrybuty autorów i wydawnictw -----------------------------------------
+
+ALTER TABLE "Author" DROP CONSTRAINT IF EXISTS author_birth_year_range;
+ALTER TABLE "Author"
+  ADD CONSTRAINT author_birth_year_range
+  CHECK ("birthYear" IS NULL OR "birthYear" BETWEEN -3000 AND 2100);
+
+ALTER TABLE "Publisher" DROP CONSTRAINT IF EXISTS publisher_email_format;
+ALTER TABLE "Publisher"
+  ADD CONSTRAINT publisher_email_format
+  CHECK ("email" IS NULL OR "email" ~ '^[^@[:space:]]+@[^@[:space:]]+\.[^@[:space:]]+$');
+
+ALTER TABLE "Publisher" DROP CONSTRAINT IF EXISTS publisher_website_format;
+ALTER TABLE "Publisher"
+  ADD CONSTRAINT publisher_website_format
+  CHECK ("website" IS NULL OR "website" ~ '^https?://');
+
+-- 3e. Adresy: polski kod pocztowy NN-NNN --------------------------------------
+
+ALTER TABLE "user" DROP CONSTRAINT IF EXISTS user_postal_code_format;
+ALTER TABLE "user"
+  ADD CONSTRAINT user_postal_code_format
+  CHECK ("postalCode" ~ '^[0-9]{2}-[0-9]{3}$');
+
+-- Wydawnictwo zagraniczne może mieć kod w innym formacie.
+ALTER TABLE "Publisher" DROP CONSTRAINT IF EXISTS publisher_postal_code_format;
+ALTER TABLE "Publisher"
+  ADD CONSTRAINT publisher_postal_code_format
+  CHECK (
+    "postalCode" IS NULL
+    OR "countryCode" IS DISTINCT FROM 'PL'
+    OR "postalCode" ~ '^[0-9]{2}-[0-9]{3}$'
+  );
+
+ALTER TABLE "Publisher" DROP CONSTRAINT IF EXISTS publisher_address_needs_city;
+ALTER TABLE "Publisher"
+  ADD CONSTRAINT publisher_address_needs_city
+  CHECK (("street" IS NULL AND "postalCode" IS NULL) OR "city" IS NOT NULL);
+
+-- 3f. Rezerwacja: data zamknięcia <=> status inny niż PENDING ---------------
+
+ALTER TABLE "Reservation" DROP CONSTRAINT IF EXISTS reservation_closed_at_matches_status;
+ALTER TABLE "Reservation"
+  ADD CONSTRAINT reservation_closed_at_matches_status
+  CHECK (("status" = 'PENDING') = ("closedAt" IS NULL));
+
+ALTER TABLE "Reservation" DROP CONSTRAINT IF EXISTS reservation_closed_after_created;
+ALTER TABLE "Reservation"
+  ADD CONSTRAINT reservation_closed_after_created
+  CHECK ("closedAt" IS NULL OR "closedAt" >= "createdAt");
+
+-- 4. Reguły statusu egzemplarza względem wypożyczeń -------------------------
+--   * aktywne wypożyczenie wymaga egzemplarza o statusie AVAILABLE
+--     (zagubionego ani konserwowanego nie można wypożyczyć);
+--   * egzemplarza z aktywnym wypożyczeniem nie można oznaczyć jako LOST
+--     ani MAINTENANCE — najpierw trzeba zarejestrować zwrot.
+
+CREATE OR REPLACE FUNCTION check_copy_loanable() RETURNS trigger AS $$
 BEGIN
-  IF NEW."returnedAt" IS NULL THEN
-    UPDATE "Copy"
-    SET "status" = 'LOANED', "updatedAt" = now()
-    WHERE "id" = NEW."copyId" AND "status" = 'AVAILABLE';
-  ELSE
-    UPDATE "Copy"
-    SET "status" = 'AVAILABLE', "updatedAt" = now()
-    WHERE "id" = NEW."copyId"
-      AND "status" = 'LOANED'
-      AND NOT EXISTS (
-        SELECT 1 FROM "Loan" l
-        WHERE l."copyId" = NEW."copyId"
-          AND l."returnedAt" IS NULL
-          AND l."id" <> NEW."id"
-      );
+  IF NEW."returnedAt" IS NULL AND EXISTS (
+    SELECT 1 FROM "Copy" c
+    WHERE c."id" = NEW."copyId" AND c."status" <> 'AVAILABLE'
+  ) THEN
+    RAISE EXCEPTION 'Egzemplarz % nie ma statusu AVAILABLE', NEW."copyId"
+      USING ERRCODE = 'check_violation';
   END IF;
   RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
 
-DROP TRIGGER IF EXISTS loan_sync_copy_status ON "Loan";
-CREATE TRIGGER loan_sync_copy_status
-  AFTER INSERT OR UPDATE OF "returnedAt" ON "Loan"
+DROP TRIGGER IF EXISTS loan_copy_must_be_available ON "Loan";
+CREATE TRIGGER loan_copy_must_be_available
+  BEFORE INSERT OR UPDATE OF "copyId", "returnedAt" ON "Loan"
   FOR EACH ROW
-  EXECUTE FUNCTION sync_copy_status_on_loan();
+  EXECUTE FUNCTION check_copy_loanable();
+
+CREATE OR REPLACE FUNCTION check_copy_status_change() RETURNS trigger AS $$
+BEGIN
+  IF NEW."status" <> 'AVAILABLE' AND EXISTS (
+    SELECT 1 FROM "Loan" l
+    WHERE l."copyId" = NEW."id" AND l."returnedAt" IS NULL
+  ) THEN
+    RAISE EXCEPTION 'Egzemplarz % ma aktywne wypożyczenie', NEW."id"
+      USING ERRCODE = 'check_violation';
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS copy_status_not_while_loaned ON "Copy";
+CREATE TRIGGER copy_status_not_while_loaned
+  BEFORE UPDATE OF "status" ON "Copy"
+  FOR EACH ROW
+  EXECUTE FUNCTION check_copy_status_change();

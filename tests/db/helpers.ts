@@ -32,43 +32,63 @@ export function randomPesel(): string {
 
 export async function insertUser(
 	client: pg.Client,
-	overrides: { pesel?: string | null } = {},
+	overrides: { pesel?: string | null; postalCode?: string } = {},
 ): Promise<string> {
 	const id = randomUUID();
 	const pesel = "pesel" in overrides ? overrides.pesel : randomPesel();
 	await client.query(
-		`INSERT INTO "user" (id, name, email, "firstName", "lastName", pesel, "updatedAt")
-		 VALUES ($1, 'Test Test', $2, 'Test', 'Test', $3, now())`,
-		[id, `${id}@test.local`, pesel],
+		`INSERT INTO "user" (id, name, email, "firstName", "lastName", pesel, street, "postalCode", city, "updatedAt")
+		 VALUES ($1, 'Test Test', $2, 'Test', 'Test', $3, 'ul. Testowa 1', $4, 'Warszawa', now())`,
+		[id, `${id}@test.local`, pesel, overrides.postalCode ?? "00-001"],
 	);
 	return id;
 }
 
-/** Tworzy wydawnictwo, książkę i egzemplarze; zwraca ID egzemplarzy. */
+/** Zapewnia wpis słownika języków (seed może nie być uruchomiony). */
+export async function ensureLanguage(
+	client: pg.Client,
+	code = "pl",
+	name = "polski",
+): Promise<string> {
+	await client.query(
+		`INSERT INTO "Language" (code, name) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
+		[code, name],
+	);
+	return code;
+}
+
+/** Tworzy wydawnictwo, pozycję, wydanie i egzemplarze; zwraca ID egzemplarzy. */
 export async function insertCopies(
 	client: pg.Client,
 	count = 1,
 	status: "AVAILABLE" | "LOST" | "MAINTENANCE" = "AVAILABLE",
 ): Promise<string[]> {
 	const publisherId = randomUUID();
-	const bookId = randomUUID();
+	const workId = randomUUID();
+	const editionId = randomUUID();
+	await ensureLanguage(client);
+	await client.query(`INSERT INTO "Publisher" (id, name) VALUES ($1, $2)`, [
+		publisherId,
+		`Wydawnictwo ${publisherId}`,
+	]);
 	await client.query(
-		`INSERT INTO "Publisher" (id, name, "updatedAt") VALUES ($1, $2, now())`,
-		[publisherId, `Wydawnictwo ${publisherId}`],
+		`INSERT INTO "Work" (id, title, "originalLanguageCode")
+		 VALUES ($1, 'Pozycja testowa', 'pl')`,
+		[workId],
 	);
 	await client.query(
-		`INSERT INTO "Book" (id, title, ean, "pageCount", "publicationYear", "publisherId", "updatedAt")
-		 VALUES ($1, 'Książka testowa', $2, 100, 2020, $3, now())`,
-		[bookId, `T${bookId.slice(0, 12)}`, publisherId],
+		`INSERT INTO "Edition" (id, "workId", ean, "pageCount", "publicationYear", "languageCode", "publisherId")
+		 VALUES ($1, $2, $3, 100, 2020, 'pl', $4)`,
+		[editionId, workId, `T${editionId.slice(0, 12)}`, publisherId],
 	);
 
 	const ids: string[] = [];
 	for (let i = 0; i < count; i++) {
 		const id = randomUUID();
 		await client.query(
-			`INSERT INTO "Copy" (id, "bookId", "inventoryNo", status, "updatedAt")
-			 VALUES ($1, $2, $3, $4::"CopyStatus", now())`,
-			[id, bookId, `INV-${id}`, status],
+			`INSERT INTO "Copy" (id, "editionId", "inventoryNo", status)
+			 VALUES ($1, $2, $3, $4::"CopyStatus")`,
+			[id, editionId, `INV-${id}`, status],
 		);
 		ids.push(id);
 	}
@@ -94,12 +114,11 @@ export async function insertLoan(
 		dueOffsetDays = 14,
 	} = options;
 	await client.query(
-		`INSERT INTO "Loan" (id, "copyId", "userId", "loanedAt", "dueAt", "returnedAt", "updatedAt")
+		`INSERT INTO "Loan" (id, "copyId", "userId", "loanedAt", "dueAt", "returnedAt")
 		 VALUES ($1, $2, $3,
 		   now() + make_interval(days => $4::int),
 		   now() + make_interval(days => $5::int),
-		   CASE WHEN $6::text = 'now' THEN now() ELSE NULL END,
-		   now())`,
+		   CASE WHEN $6::text = 'now' THEN now() ELSE NULL END)`,
 		[id, copyId, userId, loanedOffsetDays, dueOffsetDays, returnedAt],
 	);
 	return id;

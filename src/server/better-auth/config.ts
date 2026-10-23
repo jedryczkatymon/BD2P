@@ -2,6 +2,7 @@ import { betterAuth } from "better-auth";
 import { prismaAdapter } from "better-auth/adapters/prisma";
 import { APIError } from "better-auth/api";
 
+import { isValidPolishPostalCode, normalizePostalCode } from "~/lib/address";
 import { isValidPesel, normalizePesel } from "~/lib/pesel";
 import { db } from "~/server/db";
 
@@ -21,6 +22,9 @@ export const auth = betterAuth({
 			lastName: { type: "string", required: true },
 			phone: { type: "string", required: false },
 			pesel: { type: "string", required: true },
+			street: { type: "string", required: true },
+			postalCode: { type: "string", required: true },
+			city: { type: "string", required: true },
 			role: {
 				type: "string",
 				required: false,
@@ -58,7 +62,14 @@ export const auth = betterAuth({
 						});
 					}
 
-					return { data: { ...user, pesel } };
+					const postalCode = normalizePostalCode(String(user.postalCode ?? ""));
+					if (!isValidPolishPostalCode(postalCode)) {
+						throw new APIError("BAD_REQUEST", {
+							message: "Kod pocztowy musi mieć format 00-000",
+						});
+					}
+
+					return { data: { ...user, pesel, postalCode } };
 				},
 			},
 			update: {

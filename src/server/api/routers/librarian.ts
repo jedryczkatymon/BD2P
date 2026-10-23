@@ -4,12 +4,22 @@ import { z } from "zod";
 import type { AuthorName } from "~/lib/library-rules";
 import {
 	addDays,
+	COPY_AVAILABILITY_SELECT,
 	getBorrowBlockReason,
+	isCopyOnLoan,
+	isForeignKeyViolation,
 	isUniqueViolation,
 	LOAN_DAYS,
+	LOANABLE_COPY_WHERE,
 	parseAuthorsText,
 } from "~/lib/library-rules";
 import { isValidPesel, normalizePesel } from "~/lib/pesel";
+import {
+	assertPublisherAddress,
+	assertUserAddress,
+	publisherAddressShape,
+	userAddressShape,
+} from "~/server/api/address";
 import { createTRPCRouter, librarianProcedure } from "~/server/api/trpc";
 import { auth } from "~/server/better-auth";
 import type { Prisma } from "../../../../generated/prisma/client";
@@ -30,14 +40,75 @@ const paginationInput = z.object({
 
 const copyStatusManual = z.enum(["AVAILABLE", "LOST", "MAINTENANCE"]);
 
-const bookWriteInput = z.object({
+const languageCodeSchema = z
+	.string()
+	.trim()
+	.regex(/^[a-z]{2}$/, "Nieprawidłowy kod języka");
+const countryCodeSchema = z
+	.string()
+	.trim()
+	.regex(/^[A-Z]{2}$/, "Nieprawidłowy kod kraju");
+
+/** Optional free-text field: empty string is stored as NULL. */
+function optionalText(max: number) {
+	return z
+		.string()
+		.trim()
+		.max(max)
+		.nullable()
+		.transform((value) => (value ? value : null));
+}
+
+const workWriteInput = z.object({
 	title: z.string().trim().min(1).max(500),
+	originalTitle: optionalText(500),
+	description: optionalText(5000),
+	originalYear: z.number().int().min(-3000).max(2100).nullable(),
+	originalLanguageCode: languageCodeSchema,
+	authors: z.string().trim().max(1000),
+	genreIds: z.array(z.string().min(1)).max(20),
+});
+
+const editionWriteInput = z.object({
 	ean: z.string().trim().min(1).max(32),
 	pageCount: z.number().int().min(1).max(50_000),
 	publicationYear: z.number().int().min(1000).max(2100),
+	languageCode: languageCodeSchema,
+	format: z.enum(["HARDCOVER", "PAPERBACK"]),
 	publisherName: z.string().trim().min(1).max(200),
-	authors: z.string().trim().min(1).max(1000),
-	categoryIds: z.array(z.string().min(1)).max(20),
+});
+
+const authorWriteInput = z.object({
+	firstName: z.string().trim().min(1).max(100),
+	lastName: z.string().trim().min(1).max(100),
+	countryCode: countryCodeSchema.nullable(),
+	birthYear: z.number().int().min(-3000).max(2100).nullable(),
+	genreIds: z.array(z.string().min(1)).max(20),
+});
+
+const publisherWriteInput = z.object({
+	name: z.string().trim().min(1).max(200),
+	countryCode: countryCodeSchema.nullable(),
+	...publisherAddressShape,
+	email: z
+		.string()
+		.trim()
+		.max(200)
+		.nullable()
+		.transform((value) => (value ? value : null))
+		.pipe(z.string().email("Nieprawidłowy adres e-mail").nullable()),
+	website: z
+		.string()
+		.trim()
+		.max(300)
+		.nullable()
+		.transform((value) => (value ? value : null))
+		.pipe(
+			z
+				.string()
+				.regex(/^https?:\/\//, "Adres strony musi zaczynać się od http(s)://")
+				.nullable(),
+		),
 });
 
 async function resolvePublisherId(
@@ -80,18 +151,86 @@ async function resolveAuthorId(
 	return created.id;
 }
 
-async function resolveBookRelations(
+async function resolveAuthorIds(
 	tx: Prisma.TransactionClient,
-	input: { publisherName: string; authors: string },
-) {
-	const publisherId = await resolvePublisherId(tx, input.publisherName);
-	const parsedAuthors = parseAuthorsText(input.authors);
+	authorsText: string,
+): Promise<string[]> {
 	const authorIds: string[] = [];
-	for (const author of parsedAuthors) {
+	for (const author of parseAuthorsText(authorsText)) {
 		authorIds.push(await resolveAuthorId(tx, author));
 	}
-	return { publisherId, authorIds };
+	return authorIds;
 }
+
+async function assertEanFree(
+	db: Prisma.TransactionClient | typeof import("~/server/db").db,
+	ean: string,
+	exceptId?: string,
+) {
+	const conflict = await db.edition.findFirst({
+		where: {
+			ean,
+			...(exceptId ? { NOT: { id: exceptId } } : {}),
+		},
+		select: { id: true },
+	});
+	if (conflict) {
+		throw new TRPCError({
+			code: "BAD_REQUEST",
+			message: "Wydanie o tym EAN już istnieje",
+		});
+	}
+}
+
+/** Maps an FK violation (unknown country/language code) to a user-facing error. */
+async function withDictionaryCheck<T>(fn: () => Promise<T>): Promise<T> {
+	try {
+		return await fn();
+	} catch (error) {
+		if (isForeignKeyViolation(error)) {
+			throw new TRPCError({
+				code: "BAD_REQUEST",
+				message: "Nieznany kod kraju lub języka",
+			});
+		}
+		throw error;
+	}
+}
+
+async function assertPublisherNameFree(
+	db: Prisma.TransactionClient | typeof import("~/server/db").db,
+	name: string,
+	exceptId?: string,
+) {
+	const existing = await db.publisher.findFirst({
+		where: {
+			name: { equals: name, mode: "insensitive" },
+			...(exceptId ? { NOT: { id: exceptId } } : {}),
+		},
+		select: { id: true },
+	});
+	if (existing) {
+		throw new TRPCError({
+			code: "BAD_REQUEST",
+			message: "Wydawnictwo o tej nazwie już istnieje",
+		});
+	}
+}
+
+const languageSelect = { select: { code: true, name: true } } as const;
+
+const authorInclude = {
+	orderBy: { authorOrder: "asc" },
+	include: {
+		author: {
+			select: {
+				id: true,
+				firstName: true,
+				lastName: true,
+			},
+		},
+	},
+} satisfies Prisma.Work$authorsArgs;
 
 function userSearchWhere(q: string): Prisma.UserWhereInput {
 	return {
@@ -157,7 +296,12 @@ async function createLoanForCopy(
 
 	const copy = await db.copy.findUnique({
 		where: { id: params.copyId },
-		select: { id: true, status: true, bookId: true, inventoryNo: true },
+		select: {
+			id: true,
+			status: true,
+			inventoryNo: true,
+			edition: { select: { workId: true } },
+		},
 	});
 
 	if (!copy) {
@@ -210,36 +354,31 @@ async function createLoanForCopy(
 		throw error;
 	}
 
-	await db.copy.update({
-		where: { id: copy.id },
-		data: { status: "LOANED" },
-	});
-
 	// Wypożyczenie zarezerwowanej książki realizuje rezerwację czytelnika.
 	await db.reservation.updateMany({
 		where: {
 			userId: params.userId,
-			bookId: copy.bookId,
+			workId: copy.edition.workId,
 			status: "PENDING",
 		},
-		data: { status: "FULFILLED" },
+		data: { status: "FULFILLED", closedAt: new Date() },
 	});
 
 	return {
 		loanId: loan.id,
-		bookId: copy.bookId,
+		workId: copy.edition.workId,
 		inventoryNo: copy.inventoryNo,
 	};
 }
 
-const categoryNameSchema = z.string().trim().min(1).max(100);
+const genreNameSchema = z.string().trim().min(1).max(100);
 
-async function assertCategoryNameFree(
+async function assertGenreNameFree(
 	db: Prisma.TransactionClient | typeof import("~/server/db").db,
 	name: string,
 	exceptId?: string,
 ) {
-	const existing = await db.category.findFirst({
+	const existing = await db.genre.findFirst({
 		where: {
 			name: { equals: name, mode: "insensitive" },
 			...(exceptId ? { NOT: { id: exceptId } } : {}),
@@ -249,7 +388,7 @@ async function assertCategoryNameFree(
 	if (existing) {
 		throw new TRPCError({
 			code: "BAD_REQUEST",
-			message: "Kategoria o tej nazwie już istnieje",
+			message: "Gatunek o tej nazwie już istnieje",
 		});
 	}
 }
@@ -269,8 +408,14 @@ export const librarianRouter = createTRPCRouter({
 			if (q) {
 				where.OR = [
 					{ copy: { inventoryNo: { contains: q, mode: "insensitive" } } },
-					{ copy: { book: { title: { contains: q, mode: "insensitive" } } } },
-					{ copy: { book: { ean: { contains: q, mode: "insensitive" } } } },
+					{
+						copy: {
+							edition: {
+								work: { title: { contains: q, mode: "insensitive" } },
+							},
+						},
+					},
+					{ copy: { edition: { ean: { contains: q, mode: "insensitive" } } } },
 					{ user: userSearchWhere(q) },
 				];
 			}
@@ -298,8 +443,12 @@ export const librarianRouter = createTRPCRouter({
 							select: {
 								id: true,
 								inventoryNo: true,
-								book: {
-									select: { id: true, title: true, ean: true },
+								edition: {
+									select: {
+										id: true,
+										ean: true,
+										work: { select: { id: true, title: true } },
+									},
 								},
 							},
 						},
@@ -320,7 +469,8 @@ export const librarianRouter = createTRPCRouter({
 					user: loan.user,
 					inventoryNo: loan.copy.inventoryNo,
 					copyId: loan.copy.id,
-					book: loan.copy.book,
+					work: loan.copy.edition.work,
+					edition: { id: loan.copy.edition.id, ean: loan.copy.edition.ean },
 				})),
 			};
 		}),
@@ -334,8 +484,14 @@ export const librarianRouter = createTRPCRouter({
 			const where: Prisma.ReservationWhereInput = { status: "PENDING" };
 			if (q) {
 				where.OR = [
-					{ book: { title: { contains: q, mode: "insensitive" } } },
-					{ book: { ean: { contains: q, mode: "insensitive" } } },
+					{ work: { title: { contains: q, mode: "insensitive" } } },
+					{
+						work: {
+							editions: {
+								some: { ean: { contains: q, mode: "insensitive" } },
+							},
+						},
+					},
 					{ user: userSearchWhere(q) },
 				];
 			}
@@ -356,8 +512,8 @@ export const librarianRouter = createTRPCRouter({
 								lastName: true,
 							},
 						},
-						book: {
-							select: { id: true, title: true, ean: true },
+						work: {
+							select: { id: true, title: true },
 						},
 					},
 				}),
@@ -371,7 +527,7 @@ export const librarianRouter = createTRPCRouter({
 					id: r.id,
 					createdAt: r.createdAt,
 					user: r.user,
-					book: r.book,
+					work: r.work,
 				})),
 			};
 		}),
@@ -388,8 +544,14 @@ export const librarianRouter = createTRPCRouter({
 			if (q) {
 				where.OR = [
 					{ copy: { inventoryNo: { contains: q, mode: "insensitive" } } },
-					{ copy: { book: { title: { contains: q, mode: "insensitive" } } } },
-					{ copy: { book: { ean: { contains: q, mode: "insensitive" } } } },
+					{
+						copy: {
+							edition: {
+								work: { title: { contains: q, mode: "insensitive" } },
+							},
+						},
+					},
+					{ copy: { edition: { ean: { contains: q, mode: "insensitive" } } } },
 					{ user: userSearchWhere(q) },
 				];
 			}
@@ -414,8 +576,12 @@ export const librarianRouter = createTRPCRouter({
 							select: {
 								id: true,
 								inventoryNo: true,
-								book: {
-									select: { id: true, title: true, ean: true },
+								edition: {
+									select: {
+										id: true,
+										ean: true,
+										work: { select: { id: true, title: true } },
+									},
 								},
 							},
 						},
@@ -438,7 +604,11 @@ export const librarianRouter = createTRPCRouter({
 							user: loan.user,
 							inventoryNo: loan.copy.inventoryNo,
 							copyId: loan.copy.id,
-							book: loan.copy.book,
+							work: loan.copy.edition.work,
+							edition: {
+								id: loan.copy.edition.id,
+								ean: loan.copy.edition.ean,
+							},
 						},
 					];
 				}),
@@ -461,8 +631,14 @@ export const librarianRouter = createTRPCRouter({
 
 			if (q) {
 				where.OR = [
-					{ book: { title: { contains: q, mode: "insensitive" } } },
-					{ book: { ean: { contains: q, mode: "insensitive" } } },
+					{ work: { title: { contains: q, mode: "insensitive" } } },
+					{
+						work: {
+							editions: {
+								some: { ean: { contains: q, mode: "insensitive" } },
+							},
+						},
+					},
 					{ user: userSearchWhere(q) },
 				];
 			}
@@ -473,7 +649,7 @@ export const librarianRouter = createTRPCRouter({
 					where,
 					skip,
 					take: pageSize,
-					orderBy: { updatedAt: "desc" },
+					orderBy: { closedAt: "desc" },
 					include: {
 						user: {
 							select: {
@@ -483,8 +659,8 @@ export const librarianRouter = createTRPCRouter({
 								lastName: true,
 							},
 						},
-						book: {
-							select: { id: true, title: true, ean: true },
+						work: {
+							select: { id: true, title: true },
 						},
 					},
 				}),
@@ -498,34 +674,42 @@ export const librarianRouter = createTRPCRouter({
 					id: r.id,
 					status: r.status,
 					createdAt: r.createdAt,
-					updatedAt: r.updatedAt,
+					closedAt: r.closedAt,
 					user: r.user,
-					book: r.book,
+					work: r.work,
 				})),
 			};
 		}),
 
-	listBooks: librarianProcedure
+	listWorks: librarianProcedure
 		.input(
 			paginationInput.extend({
 				authorId: z.string().trim().optional(),
 				publisherId: z.string().trim().optional(),
-				categoryId: z.string().trim().optional(),
+				genreId: z.string().trim().optional(),
 			}),
 		)
 		.query(async ({ ctx, input }) => {
 			const { page, pageSize, q } = input;
 			const skip = (page - 1) * pageSize;
-			const and: Prisma.BookWhereInput[] = [];
+			const and: Prisma.WorkWhereInput[] = [];
 
 			if (q) {
 				and.push({
 					OR: [
 						{ title: { contains: q, mode: "insensitive" } },
-						{ ean: { contains: q, mode: "insensitive" } },
 						{
-							publisher: {
-								name: { contains: q, mode: "insensitive" },
+							editions: {
+								some: {
+									OR: [
+										{ ean: { contains: q, mode: "insensitive" } },
+										{
+											publisher: {
+												name: { contains: q, mode: "insensitive" },
+											},
+										},
+									],
+								},
 							},
 						},
 					],
@@ -536,38 +720,31 @@ export const librarianRouter = createTRPCRouter({
 				and.push({ authors: { some: { authorId: input.authorId } } });
 			}
 			if (input.publisherId) {
-				and.push({ publisherId: input.publisherId });
-			}
-			if (input.categoryId) {
 				and.push({
-					categories: { some: { categoryId: input.categoryId } },
+					editions: { some: { publisherId: input.publisherId } },
+				});
+			}
+			if (input.genreId) {
+				and.push({
+					genres: { some: { genreId: input.genreId } },
 				});
 			}
 
-			const where: Prisma.BookWhereInput = and.length > 0 ? { AND: and } : {};
+			const where: Prisma.WorkWhereInput = and.length > 0 ? { AND: and } : {};
 
-			const [total, books] = await Promise.all([
-				ctx.db.book.count({ where }),
-				ctx.db.book.findMany({
+			const [total, works] = await Promise.all([
+				ctx.db.work.count({ where }),
+				ctx.db.work.findMany({
 					where,
 					skip,
 					take: pageSize,
 					orderBy: { title: "asc" },
 					include: {
-						publisher: { select: { id: true, name: true } },
-						authors: {
-							orderBy: { authorOrder: "asc" },
-							include: {
-								author: {
-									select: {
-										id: true,
-										firstName: true,
-										lastName: true,
-									},
-								},
-							},
+						authors: authorInclude,
+						originalLanguage: languageSelect,
+						editions: {
+							select: { _count: { select: { copies: true } } },
 						},
-						_count: { select: { copies: true } },
 					},
 				}),
 			]);
@@ -576,71 +753,116 @@ export const librarianRouter = createTRPCRouter({
 				total,
 				page,
 				pageSize,
-				items: books.map((book) => ({
-					id: book.id,
-					title: book.title,
-					ean: book.ean,
-					pageCount: book.pageCount,
-					publicationYear: book.publicationYear,
-					publisher: book.publisher,
-					authors: book.authors.map((ba) => ba.author),
-					copiesCount: book._count.copies,
+				items: works.map((work) => ({
+					id: work.id,
+					title: work.title,
+					originalTitle: work.originalTitle,
+					originalYear: work.originalYear,
+					originalLanguage: work.originalLanguage,
+					authors: work.authors.map((wa) => wa.author),
+					editionsCount: work.editions.length,
+					copiesCount: work.editions.reduce(
+						(sum, e) => sum + e._count.copies,
+						0,
+					),
 				})),
 			};
 		}),
 
-	getBookWithCopies: librarianProcedure
+	getWork: librarianProcedure
 		.input(z.object({ id: z.string().min(1) }))
 		.query(async ({ ctx, input }) => {
-			const book = await ctx.db.book.findUnique({
+			const work = await ctx.db.work.findUnique({
 				where: { id: input.id },
 				include: {
-					publisher: { select: { id: true, name: true } },
-					authors: {
-						orderBy: { authorOrder: "asc" },
+					authors: authorInclude,
+					originalLanguage: languageSelect,
+					genres: {
 						include: {
-							author: {
-								select: {
-									id: true,
-									firstName: true,
-									lastName: true,
-								},
-							},
+							genre: { select: { id: true, name: true } },
 						},
 					},
-					categories: {
+					editions: {
+						orderBy: [{ publicationYear: "desc" }, { ean: "asc" }],
 						include: {
-							category: { select: { id: true, name: true } },
-						},
-					},
-					copies: {
-						orderBy: { inventoryNo: "asc" },
-						select: {
-							id: true,
-							inventoryNo: true,
-							status: true,
+							publisher: { select: { id: true, name: true } },
+							language: languageSelect,
+							_count: { select: { copies: true } },
 						},
 					},
 				},
 			});
 
-			if (!book) {
+			if (!work) {
 				throw new TRPCError({
 					code: "NOT_FOUND",
-					message: "Nie znaleziono książki",
+					message: "Nie znaleziono pozycji",
 				});
 			}
 
 			return {
-				id: book.id,
-				title: book.title,
-				ean: book.ean,
-				pageCount: book.pageCount,
-				publicationYear: book.publicationYear,
-				publisher: book.publisher,
-				authors: book.authors.map((ba) => ba.author),
-				categories: book.categories.map((bc) => bc.category),
-				copies: book.copies,
+				id: work.id,
+				title: work.title,
+				originalTitle: work.originalTitle,
+				description: work.description,
+				originalYear: work.originalYear,
+				originalLanguage: work.originalLanguage,
+				authors: work.authors.map((wa) => wa.author),
+				genres: work.genres.map((wc) => wc.genre),
+				editions: work.editions.map((edition) => ({
+					id: edition.id,
+					ean: edition.ean,
+					pageCount: edition.pageCount,
+					publicationYear: edition.publicationYear,
+					language: edition.language,
+					format: edition.format,
+					publisher: edition.publisher,
+					copiesCount: edition._count.copies,
+				})),
+			};
+		}),
+
+	getEditionWithCopies: librarianProcedure
+		.input(z.object({ id: z.string().min(1) }))
+		.query(async ({ ctx, input }) => {
+			const edition = await ctx.db.edition.findUnique({
+				where: { id: input.id },
+				include: {
+					publisher: { select: { id: true, name: true } },
+					language: languageSelect,
+					copies: {
+						orderBy: { inventoryNo: "asc" },
+						select: {
+							id: true,
+							inventoryNo: true,
+							...COPY_AVAILABILITY_SELECT,
+						},
+					},
+				},
+			});
+
+			if (!edition) {
+				throw new TRPCError({
+					code: "NOT_FOUND",
+					message: "Nie znaleziono wydania",
+				});
+			}
+
+			return {
+				id: edition.id,
+				workId: edition.workId,
+				ean: edition.ean,
+				pageCount: edition.pageCount,
+				publicationYear: edition.publicationYear,
+				language: edition.language,
+				format: edition.format,
+				publisher: edition.publisher,
+				copies: edition.copies.map((copy) => ({
+					id: copy.id,
+					inventoryNo: copy.inventoryNo,
+					status: copy.status,
+					onLoan: isCopyOnLoan(copy),
+				})),
 			};
 		}),
 
@@ -650,12 +872,7 @@ export const librarianRouter = createTRPCRouter({
 			await ctx.db.$transaction(async (tx) => {
 				const loan = await tx.loan.findUnique({
 					where: { id: input.loanId },
-					select: {
-						id: true,
-						returnedAt: true,
-						copyId: true,
-						copy: { select: { status: true } },
-					},
+					select: { id: true, returnedAt: true },
 				});
 
 				if (!loan) {
@@ -672,17 +889,12 @@ export const librarianRouter = createTRPCRouter({
 					});
 				}
 
+				// Status egzemplarza się nie zmienia — o dostępności decyduje brak
+				// aktywnego wypożyczenia.
 				await tx.loan.update({
 					where: { id: loan.id },
 					data: { returnedAt: new Date() },
 				});
-
-				if (loan.copy.status !== "LOST" && loan.copy.status !== "MAINTENANCE") {
-					await tx.copy.update({
-						where: { id: loan.copyId },
-						data: { status: "AVAILABLE" },
-					});
-				}
 			});
 
 			return { ok: true as const };
@@ -712,7 +924,7 @@ export const librarianRouter = createTRPCRouter({
 
 			await ctx.db.reservation.update({
 				where: { id: reservation.id },
-				data: { status: "CANCELLED" },
+				data: { status: "CANCELLED", closedAt: new Date() },
 			});
 
 			return { ok: true as const };
@@ -727,7 +939,7 @@ export const librarianRouter = createTRPCRouter({
 					select: {
 						id: true,
 						status: true,
-						bookId: true,
+						workId: true,
 						userId: true,
 					},
 				});
@@ -748,8 +960,8 @@ export const librarianRouter = createTRPCRouter({
 
 				const availableCopy = await tx.copy.findFirst({
 					where: {
-						bookId: reservation.bookId,
-						status: "AVAILABLE",
+						edition: { workId: reservation.workId },
+						...LOANABLE_COPY_WHERE,
 					},
 					select: { id: true },
 					orderBy: { inventoryNo: "asc" },
@@ -844,129 +1056,243 @@ export const librarianRouter = createTRPCRouter({
 			});
 		}),
 
-	createBook: librarianProcedure
-		.input(bookWriteInput)
+	createWork: librarianProcedure
+		.input(workWriteInput)
 		.mutation(async ({ ctx, input }) => {
-			const existing = await ctx.db.book.findUnique({
-				where: { ean: input.ean },
-				select: { id: true },
-			});
-			if (existing) {
-				throw new TRPCError({
-					code: "BAD_REQUEST",
-					message: "Książka o tym EAN już istnieje",
-				});
-			}
+			return withDictionaryCheck(() =>
+				ctx.db.$transaction(async (tx) => {
+					const authorIds = await resolveAuthorIds(tx, input.authors);
 
-			return ctx.db.$transaction(async (tx) => {
-				const { publisherId, authorIds } = await resolveBookRelations(tx, {
-					publisherName: input.publisherName,
-					authors: input.authors,
-				});
-
-				return tx.book.create({
-					data: {
-						title: input.title,
-						ean: input.ean,
-						pageCount: input.pageCount,
-						publicationYear: input.publicationYear,
-						publisherId,
-						authors: {
-							create: authorIds.map((authorId, index) => ({
-								authorId,
-								authorOrder: index + 1,
-							})),
+					return tx.work.create({
+						data: {
+							title: input.title,
+							originalTitle: input.originalTitle,
+							description: input.description,
+							originalYear: input.originalYear,
+							originalLanguageCode: input.originalLanguageCode,
+							authors: {
+								create: authorIds.map((authorId, index) => ({
+									authorId,
+									authorOrder: index + 1,
+								})),
+							},
+							genres: {
+								create: input.genreIds.map((genreId) => ({
+									genreId,
+								})),
+							},
 						},
-						categories: {
-							create: input.categoryIds.map((categoryId) => ({
-								categoryId,
-							})),
-						},
-					},
-					select: { id: true },
-				});
-			});
+						select: { id: true },
+					});
+				}),
+			);
 		}),
 
-	updateBook: librarianProcedure
-		.input(bookWriteInput.extend({ id: z.string().min(1) }))
+	updateWork: librarianProcedure
+		.input(workWriteInput.extend({ id: z.string().min(1) }))
 		.mutation(async ({ ctx, input }) => {
-			const conflict = await ctx.db.book.findFirst({
-				where: {
-					ean: input.ean,
-					NOT: { id: input.id },
+			await withDictionaryCheck(() =>
+				ctx.db.$transaction(async (tx) => {
+					const work = await tx.work.findUnique({
+						where: { id: input.id },
+						select: { id: true },
+					});
+					if (!work) {
+						throw new TRPCError({
+							code: "NOT_FOUND",
+							message: "Nie znaleziono pozycji",
+						});
+					}
+
+					const authorIds = await resolveAuthorIds(tx, input.authors);
+
+					await tx.workAuthor.deleteMany({ where: { workId: input.id } });
+					await tx.workGenre.deleteMany({ where: { workId: input.id } });
+
+					await tx.work.update({
+						where: { id: input.id },
+						data: {
+							title: input.title,
+							originalTitle: input.originalTitle,
+							description: input.description,
+							originalYear: input.originalYear,
+							originalLanguageCode: input.originalLanguageCode,
+							authors: {
+								create: authorIds.map((authorId, index) => ({
+									authorId,
+									authorOrder: index + 1,
+								})),
+							},
+							genres: {
+								create: input.genreIds.map((genreId) => ({
+									genreId,
+								})),
+							},
+						},
+					});
+				}),
+			);
+
+			return { ok: true as const };
+		}),
+
+	deleteWork: librarianProcedure
+		.input(z.object({ workId: z.string().min(1) }))
+		.mutation(async ({ ctx, input }) => {
+			const work = await ctx.db.work.findUnique({
+				where: { id: input.workId },
+				select: {
+					id: true,
+					_count: { select: { editions: true } },
 				},
-				select: { id: true },
 			});
-			if (conflict) {
+
+			if (!work) {
 				throw new TRPCError({
-					code: "BAD_REQUEST",
-					message: "Inna książka ma już ten EAN",
+					code: "NOT_FOUND",
+					message: "Nie znaleziono pozycji",
 				});
 			}
 
-			await ctx.db.$transaction(async (tx) => {
-				const book = await tx.book.findUnique({
-					where: { id: input.id },
-					select: { id: true },
+			if (work._count.editions > 0) {
+				throw new TRPCError({
+					code: "BAD_REQUEST",
+					message: "Najpierw usuń wszystkie wydania tej pozycji",
 				});
-				if (!book) {
-					throw new TRPCError({
-						code: "NOT_FOUND",
-						message: "Nie znaleziono książki",
+			}
+
+			const pending = await ctx.db.reservation.count({
+				where: { workId: work.id, status: "PENDING" },
+			});
+			if (pending > 0) {
+				throw new TRPCError({
+					code: "BAD_REQUEST",
+					message: "Pozycja ma aktywne rezerwacje — najpierw je anuluj",
+				});
+			}
+
+			await ctx.db.work.delete({ where: { id: work.id } });
+			return { ok: true as const };
+		}),
+
+	createEdition: librarianProcedure
+		.input(editionWriteInput.extend({ workId: z.string().min(1) }))
+		.mutation(async ({ ctx, input }) => {
+			const work = await ctx.db.work.findUnique({
+				where: { id: input.workId },
+				select: { id: true },
+			});
+			if (!work) {
+				throw new TRPCError({
+					code: "NOT_FOUND",
+					message: "Nie znaleziono pozycji",
+				});
+			}
+
+			await assertEanFree(ctx.db, input.ean);
+
+			return withDictionaryCheck(() =>
+				ctx.db.$transaction(async (tx) => {
+					const publisherId = await resolvePublisherId(tx, input.publisherName);
+
+					return tx.edition.create({
+						data: {
+							workId: input.workId,
+							ean: input.ean,
+							pageCount: input.pageCount,
+							publicationYear: input.publicationYear,
+							languageCode: input.languageCode,
+							format: input.format,
+							publisherId,
+						},
+						select: { id: true },
 					});
-				}
+				}),
+			);
+		}),
 
-				const { publisherId, authorIds } = await resolveBookRelations(tx, {
-					publisherName: input.publisherName,
-					authors: input.authors,
-				});
+	updateEdition: librarianProcedure
+		.input(editionWriteInput.extend({ id: z.string().min(1) }))
+		.mutation(async ({ ctx, input }) => {
+			await assertEanFree(ctx.db, input.ean, input.id);
 
-				await tx.bookAuthor.deleteMany({ where: { bookId: input.id } });
-				await tx.bookCategory.deleteMany({ where: { bookId: input.id } });
+			await withDictionaryCheck(() =>
+				ctx.db.$transaction(async (tx) => {
+					const edition = await tx.edition.findUnique({
+						where: { id: input.id },
+						select: { id: true },
+					});
+					if (!edition) {
+						throw new TRPCError({
+							code: "NOT_FOUND",
+							message: "Nie znaleziono wydania",
+						});
+					}
 
-				await tx.book.update({
-					where: { id: input.id },
-					data: {
-						title: input.title,
-						ean: input.ean,
-						pageCount: input.pageCount,
-						publicationYear: input.publicationYear,
-						publisherId,
-						authors: {
-							create: authorIds.map((authorId, index) => ({
-								authorId,
-								authorOrder: index + 1,
-							})),
+					const publisherId = await resolvePublisherId(tx, input.publisherName);
+
+					await tx.edition.update({
+						where: { id: input.id },
+						data: {
+							ean: input.ean,
+							pageCount: input.pageCount,
+							publicationYear: input.publicationYear,
+							languageCode: input.languageCode,
+							format: input.format,
+							publisherId,
 						},
-						categories: {
-							create: input.categoryIds.map((categoryId) => ({
-								categoryId,
-							})),
-						},
-					},
-				});
+					});
+				}),
+			);
+
+			return { ok: true as const };
+		}),
+
+	deleteEdition: librarianProcedure
+		.input(z.object({ editionId: z.string().min(1) }))
+		.mutation(async ({ ctx, input }) => {
+			const edition = await ctx.db.edition.findUnique({
+				where: { id: input.editionId },
+				select: {
+					id: true,
+					_count: { select: { copies: true } },
+				},
 			});
 
+			if (!edition) {
+				throw new TRPCError({
+					code: "NOT_FOUND",
+					message: "Nie znaleziono wydania",
+				});
+			}
+
+			if (edition._count.copies > 0) {
+				throw new TRPCError({
+					code: "BAD_REQUEST",
+					message: "Najpierw usuń wszystkie egzemplarze tego wydania",
+				});
+			}
+
+			await ctx.db.edition.delete({ where: { id: edition.id } });
 			return { ok: true as const };
 		}),
 
 	addCopy: librarianProcedure
 		.input(
 			z.object({
-				bookId: z.string().min(1),
+				editionId: z.string().min(1),
 				inventoryNo: z.string().trim().min(1).max(64),
 			}),
 		)
 		.mutation(async ({ ctx, input }) => {
-			const book = await ctx.db.book.findUnique({
-				where: { id: input.bookId },
+			const edition = await ctx.db.edition.findUnique({
+				where: { id: input.editionId },
 				select: { id: true },
 			});
-			if (!book) {
+			if (!edition) {
 				throw new TRPCError({
 					code: "NOT_FOUND",
-					message: "Nie znaleziono książki",
+					message: "Nie znaleziono wydania",
 				});
 			}
 
@@ -983,7 +1309,7 @@ export const librarianRouter = createTRPCRouter({
 
 			const copy = await ctx.db.copy.create({
 				data: {
-					bookId: input.bookId,
+					editionId: input.editionId,
 					inventoryNo: input.inventoryNo,
 					status: "AVAILABLE",
 				},
@@ -1021,7 +1347,7 @@ export const librarianRouter = createTRPCRouter({
 				});
 			}
 
-			if (copy.status === "LOANED" || copy.loans.length > 0) {
+			if (isCopyOnLoan(copy)) {
 				throw new TRPCError({
 					code: "BAD_REQUEST",
 					message:
@@ -1064,112 +1390,289 @@ export const librarianRouter = createTRPCRouter({
 			return { ok: true as const };
 		}),
 
-	deleteBook: librarianProcedure
-		.input(z.object({ bookId: z.string().min(1) }))
-		.mutation(async ({ ctx, input }) => {
-			const book = await ctx.db.book.findUnique({
-				where: { id: input.bookId },
-				select: {
-					id: true,
-					_count: { select: { copies: true } },
-				},
-			});
-
-			if (!book) {
-				throw new TRPCError({
-					code: "NOT_FOUND",
-					message: "Nie znaleziono książki",
-				});
-			}
-
-			if (book._count.copies > 0) {
-				throw new TRPCError({
-					code: "BAD_REQUEST",
-					message: "Najpierw usuń wszystkie egzemplarze tej książki",
-				});
-			}
-
-			const pending = await ctx.db.reservation.count({
-				where: { bookId: book.id, status: "PENDING" },
-			});
-			if (pending > 0) {
-				throw new TRPCError({
-					code: "BAD_REQUEST",
-					message: "Książka ma aktywne rezerwacje — najpierw je anuluj",
-				});
-			}
-
-			await ctx.db.book.delete({ where: { id: book.id } });
-			return { ok: true as const };
-		}),
-
-	listCategories: librarianProcedure.query(async ({ ctx }) => {
-		const categories = await ctx.db.category.findMany({
+	listGenres: librarianProcedure.query(async ({ ctx }) => {
+		const genres = await ctx.db.genre.findMany({
 			orderBy: { name: "asc" },
 			select: {
 				id: true,
 				name: true,
-				_count: { select: { books: true } },
+				_count: { select: { works: true } },
 			},
 		});
-		return categories.map((c) => ({
+		return genres.map((c) => ({
 			id: c.id,
 			name: c.name,
-			booksCount: c._count.books,
+			worksCount: c._count.works,
 		}));
 	}),
 
-	createCategory: librarianProcedure
-		.input(z.object({ name: categoryNameSchema }))
+	createGenre: librarianProcedure
+		.input(z.object({ name: genreNameSchema }))
 		.mutation(async ({ ctx, input }) => {
-			await assertCategoryNameFree(ctx.db, input.name);
-			return ctx.db.category.create({
+			await assertGenreNameFree(ctx.db, input.name);
+			return ctx.db.genre.create({
 				data: { name: input.name },
 				select: { id: true, name: true },
 			});
 		}),
 
-	renameCategory: librarianProcedure
-		.input(z.object({ id: z.string().min(1), name: categoryNameSchema }))
+	renameGenre: librarianProcedure
+		.input(z.object({ id: z.string().min(1), name: genreNameSchema }))
 		.mutation(async ({ ctx, input }) => {
-			const category = await ctx.db.category.findUnique({
+			const genre = await ctx.db.genre.findUnique({
 				where: { id: input.id },
 				select: { id: true },
 			});
-			if (!category) {
+			if (!genre) {
 				throw new TRPCError({
 					code: "NOT_FOUND",
-					message: "Nie znaleziono kategorii",
+					message: "Nie znaleziono gatunku",
 				});
 			}
-			await assertCategoryNameFree(ctx.db, input.name, input.id);
-			await ctx.db.category.update({
+			await assertGenreNameFree(ctx.db, input.name, input.id);
+			await ctx.db.genre.update({
 				where: { id: input.id },
 				data: { name: input.name },
 			});
 			return { ok: true as const };
 		}),
 
-	deleteCategory: librarianProcedure
+	deleteGenre: librarianProcedure
 		.input(z.object({ id: z.string().min(1) }))
 		.mutation(async ({ ctx, input }) => {
-			const category = await ctx.db.category.findUnique({
+			const genre = await ctx.db.genre.findUnique({
 				where: { id: input.id },
-				select: { id: true, _count: { select: { books: true } } },
+				select: { id: true, _count: { select: { works: true } } },
 			});
-			if (!category) {
+			if (!genre) {
 				throw new TRPCError({
 					code: "NOT_FOUND",
-					message: "Nie znaleziono kategorii",
+					message: "Nie znaleziono gatunku",
 				});
 			}
-			if (category._count.books > 0) {
+			if (genre._count.works > 0) {
 				throw new TRPCError({
 					code: "BAD_REQUEST",
-					message: `Kategoria jest przypisana do ${category._count.books} książek — nie można jej usunąć`,
+					message: `Gatunek jest przypisany do ${genre._count.works} pozycji — nie można go usunąć`,
 				});
 			}
-			await ctx.db.category.delete({ where: { id: input.id } });
+			await ctx.db.genre.delete({ where: { id: input.id } });
+			return { ok: true as const };
+		}),
+
+	listAuthors: librarianProcedure
+		.input(paginationInput)
+		.query(async ({ ctx, input }) => {
+			const { page, pageSize, q } = input;
+			const where: Prisma.AuthorWhereInput = q
+				? {
+						OR: [
+							{ firstName: { contains: q, mode: "insensitive" } },
+							{ lastName: { contains: q, mode: "insensitive" } },
+						],
+					}
+				: {};
+
+			const [total, authors] = await Promise.all([
+				ctx.db.author.count({ where }),
+				ctx.db.author.findMany({
+					where,
+					skip: (page - 1) * pageSize,
+					take: pageSize,
+					orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
+					include: {
+						country: { select: { code: true, name: true } },
+						genres: {
+							orderBy: { genre: { name: "asc" } },
+							select: { genre: { select: { id: true, name: true } } },
+						},
+						_count: { select: { works: true } },
+					},
+				}),
+			]);
+
+			return {
+				total,
+				page,
+				pageSize,
+				items: authors.map((a) => ({
+					id: a.id,
+					firstName: a.firstName,
+					lastName: a.lastName,
+					birthYear: a.birthYear,
+					country: a.country,
+					genres: a.genres.map((ag) => ag.genre),
+					worksCount: a._count.works,
+				})),
+			};
+		}),
+
+	createAuthor: librarianProcedure
+		.input(authorWriteInput)
+		.mutation(async ({ ctx, input }) => {
+			const { genreIds, ...data } = input;
+			return withDictionaryCheck(() =>
+				ctx.db.author.create({
+					data: {
+						...data,
+						genres: { create: genreIds.map((genreId) => ({ genreId })) },
+					},
+					select: { id: true },
+				}),
+			);
+		}),
+
+	updateAuthor: librarianProcedure
+		.input(authorWriteInput.extend({ id: z.string().min(1) }))
+		.mutation(async ({ ctx, input }) => {
+			const { id, genreIds, ...data } = input;
+			const author = await ctx.db.author.findUnique({
+				where: { id },
+				select: { id: true },
+			});
+			if (!author) {
+				throw new TRPCError({
+					code: "NOT_FOUND",
+					message: "Nie znaleziono autora",
+				});
+			}
+			await withDictionaryCheck(() =>
+				ctx.db.author.update({
+					where: { id },
+					data: {
+						...data,
+						genres: {
+							deleteMany: {},
+							create: genreIds.map((genreId) => ({ genreId })),
+						},
+					},
+				}),
+			);
+			return { ok: true as const };
+		}),
+
+	deleteAuthor: librarianProcedure
+		.input(z.object({ id: z.string().min(1) }))
+		.mutation(async ({ ctx, input }) => {
+			const author = await ctx.db.author.findUnique({
+				where: { id: input.id },
+				select: { id: true, _count: { select: { works: true } } },
+			});
+			if (!author) {
+				throw new TRPCError({
+					code: "NOT_FOUND",
+					message: "Nie znaleziono autora",
+				});
+			}
+			if (author._count.works > 0) {
+				throw new TRPCError({
+					code: "BAD_REQUEST",
+					message: `Autor jest przypisany do ${author._count.works} pozycji — nie można go usunąć`,
+				});
+			}
+			await ctx.db.author.delete({ where: { id: input.id } });
+			return { ok: true as const };
+		}),
+
+	listPublishers: librarianProcedure
+		.input(paginationInput)
+		.query(async ({ ctx, input }) => {
+			const { page, pageSize, q } = input;
+			const where: Prisma.PublisherWhereInput = q
+				? {
+						OR: [
+							{ name: { contains: q, mode: "insensitive" } },
+							{ street: { contains: q, mode: "insensitive" } },
+							{ postalCode: { contains: q } },
+							{ city: { contains: q, mode: "insensitive" } },
+						],
+					}
+				: {};
+
+			const [total, publishers] = await Promise.all([
+				ctx.db.publisher.count({ where }),
+				ctx.db.publisher.findMany({
+					where,
+					skip: (page - 1) * pageSize,
+					take: pageSize,
+					orderBy: { name: "asc" },
+					include: {
+						country: { select: { code: true, name: true } },
+						_count: { select: { editions: true } },
+					},
+				}),
+			]);
+
+			return {
+				total,
+				page,
+				pageSize,
+				items: publishers.map((p) => ({
+					id: p.id,
+					name: p.name,
+					street: p.street,
+					postalCode: p.postalCode,
+					city: p.city,
+					email: p.email,
+					website: p.website,
+					country: p.country,
+					editionsCount: p._count.editions,
+				})),
+			};
+		}),
+
+	createPublisher: librarianProcedure
+		.input(publisherWriteInput)
+		.mutation(async ({ ctx, input }) => {
+			assertPublisherAddress(input);
+			await assertPublisherNameFree(ctx.db, input.name);
+			return withDictionaryCheck(() =>
+				ctx.db.publisher.create({ data: input, select: { id: true } }),
+			);
+		}),
+
+	updatePublisher: librarianProcedure
+		.input(publisherWriteInput.extend({ id: z.string().min(1) }))
+		.mutation(async ({ ctx, input }) => {
+			const { id, ...data } = input;
+			const publisher = await ctx.db.publisher.findUnique({
+				where: { id },
+				select: { id: true },
+			});
+			if (!publisher) {
+				throw new TRPCError({
+					code: "NOT_FOUND",
+					message: "Nie znaleziono wydawnictwa",
+				});
+			}
+			assertPublisherAddress(data);
+			await assertPublisherNameFree(ctx.db, data.name, id);
+			await withDictionaryCheck(() =>
+				ctx.db.publisher.update({ where: { id }, data }),
+			);
+			return { ok: true as const };
+		}),
+
+	deletePublisher: librarianProcedure
+		.input(z.object({ id: z.string().min(1) }))
+		.mutation(async ({ ctx, input }) => {
+			const publisher = await ctx.db.publisher.findUnique({
+				where: { id: input.id },
+				select: { id: true, _count: { select: { editions: true } } },
+			});
+			if (!publisher) {
+				throw new TRPCError({
+					code: "NOT_FOUND",
+					message: "Nie znaleziono wydawnictwa",
+				});
+			}
+			if (publisher._count.editions > 0) {
+				throw new TRPCError({
+					code: "BAD_REQUEST",
+					message: `Wydawnictwo ma ${publisher._count.editions} wydań — nie można go usunąć`,
+				});
+			}
+			await ctx.db.publisher.delete({ where: { id: input.id } });
 			return { ok: true as const };
 		}),
 
@@ -1186,6 +1689,9 @@ export const librarianRouter = createTRPCRouter({
 							...(userSearchWhere(q).OR ?? []),
 							{ phone: { contains: q, mode: "insensitive" } },
 							{ pesel: { contains: q } },
+							{ street: { contains: q, mode: "insensitive" } },
+							{ postalCode: { contains: q } },
+							{ city: { contains: q, mode: "insensitive" } },
 						],
 					}
 				: {};
@@ -1204,6 +1710,9 @@ export const librarianRouter = createTRPCRouter({
 						email: true,
 						phone: true,
 						pesel: true,
+						street: true,
+						postalCode: true,
+						city: true,
 						role: true,
 						isActive: true,
 						createdAt: true,
@@ -1294,6 +1803,7 @@ export const librarianRouter = createTRPCRouter({
 					.optional()
 					.transform((value) => (value ? value : undefined)),
 				pesel: z.string().transform(normalizePesel),
+				...userAddressShape,
 				password: z.string().min(8).max(128),
 			}),
 		)
@@ -1304,6 +1814,7 @@ export const librarianRouter = createTRPCRouter({
 					message: "PESEL musi składać się z 11 cyfr",
 				});
 			}
+			assertUserAddress(input);
 
 			const existing = await ctx.db.user.findUnique({
 				where: { email: input.email },
@@ -1333,6 +1844,9 @@ export const librarianRouter = createTRPCRouter({
 						lastName: input.lastName,
 						phone: input.phone,
 						pesel: input.pesel,
+						street: input.street,
+						postalCode: input.postalCode,
+						city: input.city,
 					},
 					{ method: "email-password" },
 				);

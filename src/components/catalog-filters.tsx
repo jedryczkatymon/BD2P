@@ -13,11 +13,18 @@ type NamedOption = {
 	name: string;
 };
 
+type DictionaryOption = {
+	code: string;
+	name: string;
+};
+
 type CatalogFiltersProps = {
 	values: CatalogFilterValues;
 	authors: AuthorOption[];
 	publishers: NamedOption[];
-	categories: NamedOption[];
+	genres: NamedOption[];
+	languages: DictionaryOption[];
+	countries: DictionaryOption[];
 };
 
 const selectClassName =
@@ -27,7 +34,9 @@ export function CatalogFilters({
 	values,
 	authors,
 	publishers,
-	categories,
+	genres,
+	languages,
+	countries,
 }: CatalogFiltersProps) {
 	const clearHref =
 		values.pageSize === 50 ? "/" : `/?pageSize=${values.pageSize}`;
@@ -49,7 +58,7 @@ export function CatalogFilters({
 					className="w-full rounded-md border border-stone-300 bg-white px-3 py-2 text-stone-900 outline-none focus:border-teal-700"
 					defaultValue={values.q ?? ""}
 					name="q"
-					placeholder="Tytuł, autor, wydawnictwo, kategoria, EAN, rok…"
+					placeholder="Tytuł, autor, wydawnictwo, gatunek, EAN, rok…"
 					type="search"
 				/>
 			</label>
@@ -93,17 +102,53 @@ export function CatalogFilters({
 
 				<label className="flex min-w-[10rem] flex-1 flex-col gap-1">
 					<span className="font-medium text-stone-500 text-xs uppercase tracking-wide">
-						Kategoria
+						Gatunek
 					</span>
 					<select
 						className={selectClassName}
-						defaultValue={values.categoryId ?? ""}
-						name="categoryId"
+						defaultValue={values.genreId ?? ""}
+						name="genreId"
 					>
 						<option value="">Wszystkie</option>
-						{categories.map((category) => (
-							<option key={category.id} value={category.id}>
-								{category.name}
+						{genres.map((genre) => (
+							<option key={genre.id} value={genre.id}>
+								{genre.name}
+							</option>
+						))}
+					</select>
+				</label>
+
+				<label className="flex min-w-[10rem] flex-1 flex-col gap-1">
+					<span className="font-medium text-stone-500 text-xs uppercase tracking-wide">
+						Język wydania
+					</span>
+					<select
+						className={selectClassName}
+						defaultValue={values.languageCode ?? ""}
+						name="languageCode"
+					>
+						<option value="">Wszystkie</option>
+						{languages.map((language) => (
+							<option key={language.code} value={language.code}>
+								{language.name}
+							</option>
+						))}
+					</select>
+				</label>
+
+				<label className="flex min-w-[10rem] flex-1 flex-col gap-1">
+					<span className="font-medium text-stone-500 text-xs uppercase tracking-wide">
+						Kraj autora
+					</span>
+					<select
+						className={selectClassName}
+						defaultValue={values.authorCountryCode ?? ""}
+						name="authorCountryCode"
+					>
+						<option value="">Wszystkie</option>
+						{countries.map((country) => (
+							<option key={country.code} value={country.code}>
+								{country.name}
 							</option>
 						))}
 					</select>

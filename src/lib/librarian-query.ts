@@ -7,11 +7,21 @@ import {
 export type { PageSize };
 export { CATALOG_PAGE_SIZES, parsePageSize };
 
-export type LibrarianTab = "active" | "archive" | "catalog" | "users";
+export type LibrarianTab =
+	| "active"
+	| "archive"
+	| "catalog"
+	| "registry"
+	| "users";
 
 export function parseLibrarianTab(value: string | undefined): LibrarianTab {
 	if (value === "history" || value === "archive") return "archive";
-	if (value === "catalog" || value === "active" || value === "users") {
+	if (
+		value === "catalog" ||
+		value === "registry" ||
+		value === "active" ||
+		value === "users"
+	) {
 		return value;
 	}
 	return "active";

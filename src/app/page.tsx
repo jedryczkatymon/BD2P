@@ -13,7 +13,9 @@ type HomeProps = {
 		q?: string;
 		authorId?: string;
 		publisherId?: string;
-		categoryId?: string;
+		genreId?: string;
+		languageCode?: string;
+		authorCountryCode?: string;
 		available?: string;
 	}>;
 };
@@ -30,24 +32,28 @@ export default async function Home({ searchParams }: HomeProps) {
 	const q = optionalParam(params.q);
 	const authorId = optionalParam(params.authorId);
 	const publisherId = optionalParam(params.publisherId);
-	const categoryId = optionalParam(params.categoryId);
+	const genreId = optionalParam(params.genreId);
+	const languageCode = optionalParam(params.languageCode);
+	const authorCountryCode = optionalParam(params.authorCountryCode);
 	const availableOnly = params.available === "1";
 
 	const filters = {
 		q,
 		authorId,
 		publisherId,
-		categoryId,
+		genreId,
+		languageCode,
+		authorCountryCode,
 		availableOnly,
 	};
 
 	const [data, filterOptions] = await Promise.all([
-		api.book.list({
+		api.work.list({
 			page,
 			pageSize,
 			...filters,
 		}),
-		api.book.filterOptions(),
+		api.work.filterOptions(),
 	]);
 
 	return (
@@ -58,22 +64,26 @@ export default async function Home({ searchParams }: HomeProps) {
 						Katalog książek
 					</h1>
 					<p className="mt-1 text-stone-600">
-						Przeglądaj wydania dostępne w bibliotece.
+						Przeglądaj pozycje dostępne w bibliotece.
 					</p>
 				</div>
 
 				<div className="mb-6">
 					<CatalogFilters
 						authors={filterOptions.authors}
-						categories={filterOptions.categories}
+						countries={filterOptions.countries}
+						genres={filterOptions.genres}
 						key={[
 							q ?? "",
 							authorId ?? "",
 							publisherId ?? "",
-							categoryId ?? "",
+							genreId ?? "",
+							languageCode ?? "",
+							authorCountryCode ?? "",
 							availableOnly ? "1" : "0",
 							String(pageSize),
 						].join("|")}
+						languages={filterOptions.languages}
 						publishers={filterOptions.publishers}
 						values={{ ...filters, pageSize }}
 					/>
@@ -90,19 +100,20 @@ export default async function Home({ searchParams }: HomeProps) {
 
 				{data.items.length === 0 ? (
 					<p className="py-12 text-center text-stone-500">
-						Brak książek do wyświetlenia.
+						Brak pozycji do wyświetlenia.
 					</p>
 				) : (
 					<ul className="grid gap-0 sm:grid-cols-2 sm:gap-4 lg:grid-cols-3 xl:grid-cols-5">
-						{data.items.map((book) => (
-							<li className="h-full" key={book.id}>
+						{data.items.map((work) => (
+							<li className="h-full" key={work.id}>
 								<BookCard
-									authors={book.authors}
-									availableCount={book.availableCount}
-									id={book.id}
-									publicationYear={book.publicationYear}
-									title={book.title}
-									totalCopies={book.totalCopies}
+									authors={work.authors}
+									availableCount={work.availableCount}
+									editionsCount={work.editionsCount}
+									id={work.id}
+									originalYear={work.originalYear}
+									title={work.title}
+									totalCopies={work.totalCopies}
 								/>
 							</li>
 						))}

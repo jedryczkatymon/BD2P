@@ -50,9 +50,9 @@ export default async function AccountPage() {
 								<li className="px-4 py-3" key={loan.id}>
 									<Link
 										className="font-medium text-stone-900 hover:text-teal-800"
-										href={`/books/${loan.book.id}`}
+										href={`/books/${loan.work.id}`}
 									>
-										{loan.book.title}
+										{loan.work.title}
 									</Link>
 									<p className="mt-1 text-sm text-stone-600">
 										Egz. {loan.inventoryNo} · wypożyczono{" "}
@@ -79,9 +79,9 @@ export default async function AccountPage() {
 								<li className="px-4 py-3" key={loan.id}>
 									<Link
 										className="font-medium text-stone-900 hover:text-teal-800"
-										href={`/books/${loan.book.id}`}
+										href={`/books/${loan.work.id}`}
 									>
-										{loan.book.title}
+										{loan.work.title}
 									</Link>
 									<p className="mt-1 text-sm text-stone-600">
 										Egz. {loan.inventoryNo} · wypożyczono{" "}
@@ -110,9 +110,9 @@ export default async function AccountPage() {
 								<li className="px-4 py-3" key={reservation.id}>
 									<Link
 										className="font-medium text-stone-900 hover:text-teal-800"
-										href={`/books/${reservation.book.id}`}
+										href={`/books/${reservation.work.id}`}
 									>
-										{reservation.book.title}
+										{reservation.work.title}
 									</Link>
 									<p className="mt-1 text-sm text-stone-600">
 										Złożono {formatDate(reservation.createdAt)}

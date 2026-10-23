@@ -4,14 +4,14 @@ type HistoryRow = {
 	id: string;
 	status: "FULFILLED" | "CANCELLED" | "PENDING";
 	createdAt: Date;
-	updatedAt: Date;
+	closedAt: Date | null;
 	user: {
 		id: string;
 		email: string;
 		firstName: string;
 		lastName: string;
 	};
-	book: { id: string; title: string; ean: string };
+	work: { id: string; title: string };
 };
 
 function formatDate(date: Date) {
@@ -39,14 +39,14 @@ export function ReservationHistoryTable({
 
 	return (
 		<div className="mt-3 overflow-x-auto border border-stone-200 bg-white">
-			<table className="w-full min-w-[44rem] text-left text-sm">
+			<table className="w-full min-w-176 text-left text-sm">
 				<thead className="border-stone-200 border-b bg-stone-50 text-stone-500 text-xs uppercase tracking-wide">
 					<tr>
 						<th className="px-3 py-2 font-medium">Książka</th>
 						<th className="px-3 py-2 font-medium">Czytelnik</th>
 						<th className="px-3 py-2 font-medium">Status</th>
 						<th className="px-3 py-2 font-medium">Złożono</th>
-						<th className="px-3 py-2 font-medium">Aktualizacja</th>
+						<th className="px-3 py-2 font-medium">Zamknięto</th>
 					</tr>
 				</thead>
 				<tbody className="divide-y divide-stone-200">
@@ -55,11 +55,10 @@ export function ReservationHistoryTable({
 							<td className="px-3 py-2">
 								<Link
 									className="font-medium text-stone-900 hover:text-teal-800"
-									href={`/books/${row.book.id}`}
+									href={`/books/${row.work.id}`}
 								>
-									{row.book.title}
+									{row.work.title}
 								</Link>
-								<p className="text-stone-500 text-xs">EAN {row.book.ean}</p>
 							</td>
 							<td className="px-3 py-2">
 								<p className="text-stone-900">
@@ -74,7 +73,7 @@ export function ReservationHistoryTable({
 								{formatDate(row.createdAt)}
 							</td>
 							<td className="px-3 py-2 text-stone-700">
-								{formatDate(row.updatedAt)}
+								{row.closedAt ? formatDate(row.closedAt) : "—"}
 							</td>
 						</tr>
 					))}

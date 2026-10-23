@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 
+import { formatAddressLines } from "~/lib/address";
 import { api } from "~/trpc/react";
 
 type UserRow = {
@@ -11,6 +12,9 @@ type UserRow = {
 	email: string;
 	phone: string | null;
 	pesel: string;
+	street: string;
+	postalCode: string;
+	city: string;
 	role: "LIBRARIAN" | "MEMBER";
 	isActive: boolean;
 	activeLoans: number;
@@ -83,21 +87,21 @@ export function UsersTable({ items, currentUserId }: UsersTableProps) {
 	return (
 		<>
 			<div className="mt-3 overflow-x-auto border border-stone-200 bg-white">
-				<table className="w-full min-w-[56rem] table-fixed text-left text-sm">
+				<table className="w-full min-w-4xl table-fixed text-left text-sm">
 					<colgroup>
-						<col className="w-[24%]" />
-						<col className="w-[13%]" />
-						<col className="w-[13%]" />
+						<col className="w-[22%]" />
+						<col className="w-[12%]" />
+						<col className="w-[20%]" />
+						<col className="w-[10%]" />
+						<col className="w-[14%]" />
 						<col className="w-[11%]" />
-						<col className="w-[15%]" />
-						<col className="w-[12%]" />
-						<col className="w-[12%]" />
+						<col className="w-[11%]" />
 					</colgroup>
 					<thead className="border-stone-200 border-b bg-stone-50 text-stone-500 text-xs uppercase tracking-wide">
 						<tr>
 							<th className="px-3 py-2 font-medium">Użytkownik</th>
 							<th className="px-3 py-2 font-medium">PESEL</th>
-							<th className="px-3 py-2 font-medium">Telefon</th>
+							<th className="px-3 py-2 font-medium">Kontakt</th>
 							<th className="px-3 py-2 font-medium">Rola</th>
 							<th className="px-3 py-2 font-medium">Wypożyczenia</th>
 							<th className="px-3 py-2 font-medium">Status</th>
@@ -126,8 +130,8 @@ export function UsersTable({ items, currentUserId }: UsersTableProps) {
 									<td className="px-3 py-2 text-stone-700 tabular-nums">
 										{user.pesel}
 									</td>
-									<td className="px-3 py-2 text-stone-700">
-										{user.phone ?? "—"}
+									<td className="px-3 py-2">
+										<ContactCell user={user} />
 									</td>
 									<td className="px-3 py-2 text-stone-700">
 										{roleLabel(user.role)}
@@ -180,5 +184,20 @@ export function UsersTable({ items, currentUserId }: UsersTableProps) {
 				</div>
 			) : null}
 		</>
+	);
+}
+
+/** Phone on top, address below in muted text; full address on hover. */
+function ContactCell({ user }: { user: UserRow }) {
+	const addressLines = formatAddressLines(user);
+	return (
+		<div title={addressLines.join(", ")}>
+			<p className="truncate text-stone-700">{user.phone ?? "—"}</p>
+			{addressLines.map((line) => (
+				<p className="truncate text-stone-500 text-xs" key={line}>
+					{line}
+				</p>
+			))}
+		</div>
 	);
 }

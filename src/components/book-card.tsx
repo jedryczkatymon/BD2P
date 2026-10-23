@@ -8,8 +8,9 @@ type Author = {
 type BookCardProps = {
 	id: string;
 	title: string;
-	publicationYear: number;
+	originalYear: number | null;
 	authors: Author[];
+	editionsCount: number;
 	availableCount: number;
 	totalCopies: number;
 };
@@ -22,8 +23,9 @@ function formatAuthors(authors: Author[]) {
 export function BookCard({
 	id,
 	title,
-	publicationYear,
+	originalYear,
 	authors,
+	editionsCount,
 	availableCount,
 	totalCopies,
 }: BookCardProps) {
@@ -39,7 +41,10 @@ export function BookCard({
 			</h2>
 			<p className="text-sm text-stone-600">{formatAuthors(authors)}</p>
 			<div className="mt-auto flex items-center justify-between gap-2 pt-1 text-stone-500 text-xs">
-				<span>{publicationYear}</span>
+				<span>
+					{originalYear !== null ? `${originalYear} · ` : ""}
+					{editionsCount === 1 ? "1 wydanie" : `wydania: ${editionsCount}`}
+				</span>
 				<span
 					className={
 						available

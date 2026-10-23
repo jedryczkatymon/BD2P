@@ -3,14 +3,16 @@ import { redirect } from "next/navigation";
 
 import { ActiveLoansTable } from "~/components/active-loans-table";
 import { ActiveReservationsTable } from "~/components/active-reservations-table";
+import { AuthorAdmin } from "~/components/author-admin";
 import { CatalogAdmin } from "~/components/catalog-admin";
-import { CategoryAdmin } from "~/components/category-admin";
 import { CreateLoanForm } from "~/components/create-loan-form";
 import { CreateMemberForm } from "~/components/create-member-form";
+import { GenreAdmin } from "~/components/genre-admin";
 import { LibrarianPagination } from "~/components/librarian-pagination";
 import { LibrarianSearchForm } from "~/components/librarian-search-form";
 import { LibrarianTabs } from "~/components/librarian-tabs";
 import { LoanHistoryTable } from "~/components/loan-history-table";
+import { PublisherAdmin } from "~/components/publisher-admin";
 import { ReservationHistoryTable } from "~/components/reservation-history-table";
 import { UsersTable } from "~/components/users-table";
 import { parseLibrarianTab, parsePageSize } from "~/lib/librarian-query";
@@ -25,7 +27,8 @@ type LibrarianPageProps = {
 		pageSize?: string;
 		q?: string;
 		status?: string;
-		bookId?: string;
+		workId?: string;
+		editionId?: string;
 		section?: string;
 		overdue?: string;
 	}>;
@@ -59,7 +62,8 @@ export default async function LibrarianPage({
 	const page = Math.max(1, Number(params.page) || 1);
 	const loanPage = Math.max(1, Number(params.loanPage) || 1);
 	const q = optionalParam(params.q);
-	const bookId = optionalParam(params.bookId);
+	const workId = optionalParam(params.workId);
+	const editionId = optionalParam(params.editionId);
 	const overdueOnly = params.overdue === "1";
 	const statusParam = optionalParam(params.status);
 	const status =
@@ -105,8 +109,23 @@ export default async function LibrarianPage({
 					/>
 				) : null}
 
+				{tab === "registry" ? (
+					<RegistryTab
+						loanPage={loanPage}
+						page={page}
+						pageSize={pageSize}
+						q={q}
+					/>
+				) : null}
+
 				{tab === "catalog" ? (
-					<CatalogTab bookId={bookId} page={page} pageSize={pageSize} q={q} />
+					<CatalogTab
+						editionId={editionId}
+						page={page}
+						pageSize={pageSize}
+						q={q}
+						workId={workId}
+					/>
 				) : null}
 			</main>
 		</HydrateClient>
@@ -372,24 +391,26 @@ async function CatalogTab({
 	page,
 	pageSize,
 	q,
-	bookId,
+	workId,
+	editionId,
 }: {
 	page: number;
 	pageSize: 50 | 100 | 200;
 	q?: string;
-	bookId?: string;
+	workId?: string;
+	editionId?: string;
 }) {
-	const [books, filterOptions, categoryRows] = await Promise.all([
-		api.librarian.listBooks({ page, pageSize, q }),
-		api.book.filterOptions(),
-		api.librarian.listCategories(),
+	const [works, filterOptions, genreRows] = await Promise.all([
+		api.librarian.listWorks({ page, pageSize, q }),
+		api.work.filterOptions(),
+		api.librarian.listGenres(),
 	]);
 
 	return (
 		<div className="mt-6">
 			<div className="flex flex-wrap items-end justify-between gap-3">
 				<h2 className="font-medium text-stone-900">
-					Księgozbiór ({books.total})
+					Księgozbiór ({works.total})
 				</h2>
 				<Link
 					className="text-sm text-teal-800 hover:underline"
@@ -402,30 +423,107 @@ async function CatalogTab({
 				<LibrarianSearchForm
 					actionTab="catalog"
 					pageSize={pageSize}
-					placeholder="Tytuł, EAN, wydawnictwo…"
+					placeholder="Tytuł, EAN wydania, wydawnictwo…"
 					q={q}
 				/>
 			</div>
 			<CatalogAdmin
-				books={books.items}
-				categories={filterOptions.categories}
-				selectedBookId={bookId}
+				genres={filterOptions.genres}
+				languages={filterOptions.languages}
+				selectedEditionId={editionId}
+				selectedWorkId={workId}
 				tableFooter={
 					<LibrarianPagination
-						emptyLabel="Brak książek"
+						emptyLabel="Brak pozycji"
 						filters={{ q, pageSize }}
-						page={books.page}
+						page={works.page}
 						pageSize={pageSize}
 						tab="catalog"
-						total={books.total}
+						total={works.total}
 					/>
 				}
+				works={works.items}
 			/>
 			<section className="mt-8 border-stone-200 border-t pt-6">
 				<h2 className="font-medium text-stone-900">
-					Kategorie ({categoryRows.length})
+					Gatunki ({genreRows.length})
 				</h2>
-				<CategoryAdmin items={categoryRows} />
+				<GenreAdmin items={genreRows} />
+			</section>
+		</div>
+	);
+}
+
+/** Authors use `page`, publishers `loanPage` — same two-list pattern as the archive tab. */
+async function RegistryTab({
+	page,
+	loanPage,
+	pageSize,
+	q,
+}: {
+	page: number;
+	loanPage: number;
+	pageSize: 50 | 100 | 200;
+	q?: string;
+}) {
+	const [authors, publishers, filterOptions] = await Promise.all([
+		api.librarian.listAuthors({ page, pageSize, q }),
+		api.librarian.listPublishers({ page: loanPage, pageSize, q }),
+		api.work.filterOptions(),
+	]);
+
+	const sharedFilters = { q, pageSize, page, loanPage };
+
+	return (
+		<div className="mt-6 space-y-10">
+			<LibrarianSearchForm
+				actionTab="registry"
+				pageSize={pageSize}
+				placeholder="Imię lub nazwisko autora, nazwa lub miasto wydawnictwa…"
+				q={q}
+			/>
+
+			<section>
+				<h2 className="font-medium text-stone-900">
+					Autorzy ({authors.total})
+				</h2>
+				<AuthorAdmin
+					countries={filterOptions.countries}
+					genres={filterOptions.genres}
+					items={authors.items}
+					tableFooter={
+						<LibrarianPagination
+							emptyLabel="Brak autorów"
+							filters={sharedFilters}
+							page={authors.page}
+							pageParam="page"
+							pageSize={pageSize}
+							tab="registry"
+							total={authors.total}
+						/>
+					}
+				/>
+			</section>
+
+			<section className="border-stone-200 border-t pt-6">
+				<h2 className="font-medium text-stone-900">
+					Wydawnictwa ({publishers.total})
+				</h2>
+				<PublisherAdmin
+					countries={filterOptions.countries}
+					items={publishers.items}
+					tableFooter={
+						<LibrarianPagination
+							emptyLabel="Brak wydawnictw"
+							filters={sharedFilters}
+							page={publishers.page}
+							pageParam="loanPage"
+							pageSize={pageSize}
+							tab="registry"
+							total={publishers.total}
+						/>
+					}
+				/>
 			</section>
 		</div>
 	);

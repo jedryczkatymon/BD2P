@@ -11,6 +11,7 @@ describe("parseLibrarianTab", () => {
 		expect(parseLibrarianTab("active")).toBe("active");
 		expect(parseLibrarianTab("archive")).toBe("archive");
 		expect(parseLibrarianTab("catalog")).toBe("catalog");
+		expect(parseLibrarianTab("registry")).toBe("registry");
 		expect(parseLibrarianTab("users")).toBe("users");
 	});
 

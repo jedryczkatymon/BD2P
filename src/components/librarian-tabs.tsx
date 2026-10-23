@@ -6,6 +6,7 @@ const TABS: { id: LibrarianTab; label: string }[] = [
 	{ id: "active", label: "Aktywne" },
 	{ id: "archive", label: "Archiwum" },
 	{ id: "catalog", label: "Księgozbiór" },
+	{ id: "registry", label: "Autorzy i wydawnictwa" },
 	{ id: "users", label: "Użytkownicy" },
 ];
 

@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import { assertUserAddress, userAddressShape } from "~/server/api/address";
 import { createTRPCRouter, protectedProcedure } from "~/server/api/trpc";
 
 const requiredNamePart = z.string().trim().min(1).max(100);
@@ -16,6 +17,9 @@ const profileSelect = {
 	lastName: true,
 	phone: true,
 	pesel: true,
+	street: true,
+	postalCode: true,
+	city: true,
 	role: true,
 	isActive: true,
 	createdAt: true,
@@ -26,10 +30,14 @@ const loanInclude = {
 		select: {
 			id: true,
 			inventoryNo: true,
-			book: {
+			edition: {
 				select: {
-					id: true,
-					title: true,
+					work: {
+						select: {
+							id: true,
+							title: true,
+						},
+					},
 				},
 			},
 		},
@@ -44,7 +52,7 @@ function mapLoan<
 		returnedAt: Date | null;
 		copy: {
 			inventoryNo: string;
-			book: { id: string; title: string };
+			edition: { work: { id: string; title: string } };
 		};
 	},
 >(loan: T) {
@@ -54,7 +62,7 @@ function mapLoan<
 		dueAt: loan.dueAt,
 		returnedAt: loan.returnedAt,
 		inventoryNo: loan.copy.inventoryNo,
-		book: loan.copy.book,
+		work: loan.copy.edition.work,
 	};
 }
 
@@ -87,7 +95,7 @@ export const userRouter = createTRPCRouter({
 				where: { userId, status: "PENDING" },
 				orderBy: { createdAt: "asc" },
 				include: {
-					book: {
+					work: {
 						select: {
 							id: true,
 							title: true,
@@ -104,7 +112,7 @@ export const userRouter = createTRPCRouter({
 			reservations: reservations.map((r) => ({
 				id: r.id,
 				createdAt: r.createdAt,
-				book: r.book,
+				work: r.work,
 			})),
 		};
 	}),
@@ -115,15 +123,20 @@ export const userRouter = createTRPCRouter({
 				firstName: requiredNamePart,
 				lastName: requiredNamePart,
 				phone: optionalPhone,
+				...userAddressShape,
 			}),
 		)
 		.mutation(async ({ ctx, input }) => {
+			assertUserAddress(input);
 			const user = await ctx.db.user.update({
 				where: { id: ctx.session.user.id },
 				data: {
 					firstName: input.firstName,
 					lastName: input.lastName,
 					phone: input.phone,
+					street: input.street,
+					postalCode: input.postalCode,
+					city: input.city,
 					name: derivedDisplayName(input.firstName, input.lastName),
 				},
 				select: profileSelect,

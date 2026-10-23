@@ -15,7 +15,7 @@ type ReservationRow = {
 		firstName: string;
 		lastName: string;
 	};
-	book: { id: string; title: string; ean: string };
+	work: { id: string; title: string };
 };
 
 function formatDate(date: Date) {
@@ -85,13 +85,10 @@ export function ActiveReservationsTable({
 							<td className="px-3 py-2">
 								<Link
 									className="font-medium text-stone-900 hover:text-teal-800"
-									href={`/books/${reservation.book.id}`}
+									href={`/books/${reservation.work.id}`}
 								>
-									{reservation.book.title}
+									{reservation.work.title}
 								</Link>
-								<p className="text-stone-500 text-xs">
-									EAN {reservation.book.ean}
-								</p>
 							</td>
 							<td className="px-3 py-2">
 								<p className="text-stone-900">

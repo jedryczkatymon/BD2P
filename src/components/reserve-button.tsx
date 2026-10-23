@@ -7,14 +7,14 @@ import { useEffect, useState } from "react";
 import { api } from "~/trpc/react";
 
 type ReserveButtonProps = {
-	bookId: string;
+	workId: string;
 	availableCount: number;
 	isLoggedIn: boolean;
 	reservationId: string | null;
 };
 
 export function ReserveButton({
-	bookId,
+	workId,
 	availableCount,
 	isLoggedIn,
 	reservationId,
@@ -38,14 +38,14 @@ export function ReserveButton({
 		}
 	}, [reservationId, optimisticId]);
 
-	const reserve = api.book.reserve.useMutation({
+	const reserve = api.work.reserve.useMutation({
 		onMutate: () => {
 			setError(null);
 			setOptimisticId("optimistic");
 		},
 		onSuccess: (data) => {
 			setOptimisticId(data.id);
-			void utils.book.myReservation.invalidate({ bookId });
+			void utils.work.myReservation.invalidate({ workId });
 			void router.refresh();
 		},
 		onError: (err) => {
@@ -54,14 +54,14 @@ export function ReserveButton({
 		},
 	});
 
-	const cancel = api.book.cancelReservation.useMutation({
+	const cancel = api.work.cancelReservation.useMutation({
 		onMutate: () => {
 			setError(null);
 			setOptimisticId(null);
 		},
 		onSuccess: () => {
 			setOptimisticId(null);
-			void utils.book.myReservation.invalidate({ bookId });
+			void utils.work.myReservation.invalidate({ workId });
 			void router.refresh();
 		},
 		onError: (err) => {
@@ -91,7 +91,7 @@ export function ReserveButton({
 				<button
 					className="rounded-md border border-teal-700 bg-white px-4 py-2.5 font-medium text-sm text-teal-800 transition hover:bg-teal-50 disabled:opacity-60"
 					disabled={pending}
-					onClick={() => cancel.mutate({ bookId })}
+					onClick={() => cancel.mutate({ workId })}
 					type="button"
 				>
 					Zwolnij
@@ -118,7 +118,7 @@ export function ReserveButton({
 			<button
 				className="rounded-md bg-stone-900 px-4 py-2.5 font-medium text-sm text-white transition hover:bg-teal-800 disabled:opacity-60"
 				disabled={pending}
-				onClick={() => reserve.mutate({ bookId })}
+				onClick={() => reserve.mutate({ workId })}
 				type="button"
 			>
 				Zarezerwuj

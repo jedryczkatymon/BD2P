@@ -1,9 +1,33 @@
 import { TRPCError } from "@trpc/server";
 
 import { MAX_ACTIVE_LOANS } from "~/lib/loan-limits";
+import type { Prisma } from "../../generated/prisma/client";
 
 /** Termin zwrotu liczony od dnia wypożyczenia. */
 export const LOAN_DAYS = 14;
+
+/**
+ * Egzemplarz można wypożyczyć, gdy jest sprawny (AVAILABLE) i nie ma aktywnego
+ * wypożyczenia. Wypożyczenie nie jest zapisywane w Copy.status — wynika z Loan.
+ */
+export const LOANABLE_COPY_WHERE = {
+	status: "AVAILABLE",
+	loans: { none: { returnedAt: null } },
+} satisfies Prisma.CopyWhereInput;
+
+/** Select potrzebny do ustalenia dostępności egzemplarza (patrz isCopyLoanable). */
+export const COPY_AVAILABILITY_SELECT = {
+	status: true,
+	loans: { where: { returnedAt: null }, select: { id: true }, take: 1 },
+} satisfies Prisma.CopySelect;
+
+export function isCopyOnLoan(copy: { loans: unknown[] }) {
+	return copy.loans.length > 0;
+}
+
+export function isCopyLoanable(copy: { status: string; loans: unknown[] }) {
+	return copy.status === "AVAILABLE" && !isCopyOnLoan(copy);
+}
 
 export type AuthorName = { firstName: string; lastName: string };
 
@@ -20,12 +44,6 @@ export function parseAuthorsText(text: string): AuthorName[] {
 		.map((part) => part.trim())
 		.filter(Boolean);
 
-	if (parts.length === 0) {
-		throw new TRPCError({
-			code: "BAD_REQUEST",
-			message: "Podaj co najmniej jednego autora (Nazwisko Imię)",
-		});
-	}
 	if (parts.length > 20) {
 		throw new TRPCError({
 			code: "BAD_REQUEST",
@@ -64,6 +82,20 @@ export function isUniqueViolation(error: unknown): boolean {
 			message.includes("loan_one_active_per_copy"))
 	);
 }
+
+/** Insert/update referencing a missing row, e.g. an unknown country or language code. */
+export function isForeignKeyViolation(error: unknown): boolean {
+	if (typeof error !== "object" || error === null) return false;
+	const { code } = error as { code?: unknown };
+	return code === "P2003" || code === "23503";
+}
+
+export const BOOK_FORMAT_LABELS = {
+	HARDCOVER: "twarda",
+	PAPERBACK: "miękka",
+} as const;
+
+export type BookFormatValue = keyof typeof BOOK_FORMAT_LABELS;
 
 export type BorrowBlock = {
 	code: "FORBIDDEN" | "BAD_REQUEST";

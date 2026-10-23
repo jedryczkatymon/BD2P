@@ -2,29 +2,33 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { type ReactNode, useEffect, useState } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 
+import { EditionAdmin } from "~/components/edition-admin";
 import { api } from "~/trpc/react";
 
 type AuthorOption = { id: string; firstName: string; lastName: string };
 type NamedOption = { id: string; name: string };
+type DictionaryOption = { code: string; name: string };
 
-type BookListItem = {
+type WorkListItem = {
 	id: string;
 	title: string;
-	ean: string;
-	pageCount: number;
-	publicationYear: number;
-	publisher: { id: string; name: string };
+	originalTitle: string | null;
+	originalYear: number | null;
+	originalLanguage: DictionaryOption;
 	authors: AuthorOption[];
+	editionsCount: number;
 	copiesCount: number;
 };
 
 type CatalogAdminProps = {
-	books: BookListItem[];
-	categories: NamedOption[];
-	selectedBookId?: string;
-	/** Rendered directly under the books table (e.g. pagination). */
+	works: WorkListItem[];
+	genres: NamedOption[];
+	languages: DictionaryOption[];
+	selectedWorkId?: string;
+	selectedEditionId?: string;
+	/** Rendered directly under the works table (e.g. pagination). */
 	tableFooter?: ReactNode;
 };
 
@@ -33,126 +37,97 @@ const inputClassName =
 const labelClassName =
 	"mb-1 block font-medium text-stone-500 text-xs uppercase tracking-wide";
 
-type BookFormState = {
+type WorkFormState = {
 	title: string;
-	ean: string;
-	pageCount: string;
-	publicationYear: string;
-	publisherName: string;
+	originalTitle: string;
+	description: string;
+	originalYear: string;
+	originalLanguageCode: string;
 	authorsText: string;
-	categoryIds: string[];
+	genreIds: string[];
 };
 
-const emptyForm = (): BookFormState => ({
+const emptyForm = (): WorkFormState => ({
 	title: "",
-	ean: "",
-	pageCount: "",
-	publicationYear: String(new Date().getFullYear()),
-	publisherName: "",
+	originalTitle: "",
+	description: "",
+	originalYear: "",
+	originalLanguageCode: "pl",
 	authorsText: "",
-	categoryIds: [],
+	genreIds: [],
 });
 
 export function CatalogAdmin({
-	books,
-	categories,
-	selectedBookId,
+	works,
+	genres,
+	languages,
+	selectedWorkId,
+	selectedEditionId,
 	tableFooter,
 }: CatalogAdminProps) {
 	const router = useRouter();
 	const [mode, setMode] = useState<"create" | "edit">(
-		selectedBookId ? "edit" : "create",
+		selectedWorkId ? "edit" : "create",
 	);
 	const [selectedId, setSelectedId] = useState<string | undefined>(
-		selectedBookId,
+		selectedWorkId,
 	);
-	const [form, setForm] = useState<BookFormState>(() => emptyForm());
-	const [inventoryNo, setInventoryNo] = useState("");
+	const [form, setForm] = useState<WorkFormState>(() => emptyForm());
 	const [error, setError] = useState<string | null>(null);
 	const [message, setMessage] = useState<string | null>(null);
+	const formSectionRef = useRef<HTMLElement>(null);
 
-	const bookQuery = api.librarian.getBookWithCopies.useQuery(
+	const workQuery = api.librarian.getWork.useQuery(
 		{ id: selectedId ?? "" },
 		{ enabled: Boolean(selectedId) },
 	);
 
 	useEffect(() => {
-		if (!bookQuery.data || mode !== "edit") return;
-		const book = bookQuery.data;
+		if (!workQuery.data || mode !== "edit") return;
+		const work = workQuery.data;
 		setForm({
-			title: book.title,
-			ean: book.ean,
-			pageCount: String(book.pageCount),
-			publicationYear: String(book.publicationYear),
-			publisherName: book.publisher.name,
-			authorsText: book.authors
+			title: work.title,
+			originalTitle: work.originalTitle ?? "",
+			description: work.description ?? "",
+			originalYear: work.originalYear === null ? "" : String(work.originalYear),
+			originalLanguageCode: work.originalLanguage.code,
+			authorsText: work.authors
 				.map((a) => `${a.lastName} ${a.firstName}`)
 				.join(", "),
-			categoryIds: book.categories.map((c) => c.id),
+			genreIds: work.genres.map((c) => c.id),
 		});
-	}, [bookQuery.data, mode]);
+	}, [workQuery.data, mode]);
 
 	const refresh = () => {
 		router.refresh();
-		void bookQuery.refetch();
+		void workQuery.refetch();
 	};
 
-	const createBook = api.librarian.createBook.useMutation({
-		onSuccess: (book) => {
+	const createWork = api.librarian.createWork.useMutation({
+		onSuccess: (work) => {
 			setError(null);
-			setMessage("Dodano książkę.");
+			setMessage("Dodano pozycję. Dodaj teraz jej wydanie.");
 			setMode("edit");
-			setSelectedId(book.id);
-			router.replace(`/librarian?tab=catalog&bookId=${book.id}`);
+			setSelectedId(work.id);
+			router.replace(`/librarian?tab=catalog&workId=${work.id}`);
 			refresh();
 		},
 		onError: (err) => setError(err.message),
 	});
 
-	const updateBook = api.librarian.updateBook.useMutation({
+	const updateWork = api.librarian.updateWork.useMutation({
 		onSuccess: () => {
 			setError(null);
-			setMessage("Zapisano zmiany książki.");
+			setMessage("Zapisano zmiany pozycji.");
 			refresh();
 		},
 		onError: (err) => setError(err.message),
 	});
 
-	const addCopy = api.librarian.addCopy.useMutation({
+	const deleteWork = api.librarian.deleteWork.useMutation({
 		onSuccess: () => {
 			setError(null);
-			setMessage("Dodano egzemplarz.");
-			setInventoryNo("");
-			refresh();
-		},
-		onError: (err) => setError(err.message),
-	});
-
-	const updateCopyStatus = api.librarian.updateCopyStatus.useMutation({
-		onSuccess: () => {
-			setError(null);
-			setMessage("Zaktualizowano status egzemplarza.");
-			refresh();
-		},
-		onError: (err) => setError(err.message),
-	});
-
-	const deleteCopy = api.librarian.deleteCopy.useMutation({
-		onSuccess: () => {
-			setError(null);
-			setMessage("Usunięto egzemplarz.");
-			refresh();
-		},
-		onError: (err) => {
-			setMessage(null);
-			setError(err.message);
-		},
-	});
-
-	const deleteBook = api.librarian.deleteBook.useMutation({
-		onSuccess: () => {
-			setError(null);
-			setMessage("Usunięto książkę.");
+			setMessage("Usunięto pozycję.");
 			setMode("create");
 			setSelectedId(undefined);
 			setForm(emptyForm());
@@ -166,31 +141,25 @@ export function CatalogAdmin({
 	});
 
 	function parseForm() {
-		const pageCount = Number(form.pageCount);
-		const publicationYear = Number(form.publicationYear);
-		if (!form.title.trim() || !form.ean.trim()) {
-			throw new Error("Tytuł i EAN są wymagane");
+		const yearText = form.originalYear.trim();
+		const originalYear = yearText ? Number(yearText) : null;
+		if (!form.title.trim()) {
+			throw new Error("Tytuł jest wymagany");
 		}
-		if (!form.publisherName.trim()) {
-			throw new Error("Podaj wydawnictwo");
+		if (!form.originalLanguageCode) {
+			throw new Error("Wybierz język oryginału");
 		}
-		if (!form.authorsText.trim()) {
-			throw new Error("Podaj co najmniej jednego autora (Nazwisko Imię)");
-		}
-		if (!Number.isInteger(pageCount) || pageCount < 1) {
-			throw new Error("Nieprawidłowa liczba stron");
-		}
-		if (!Number.isInteger(publicationYear)) {
-			throw new Error("Nieprawidłowy rok wydania");
+		if (originalYear !== null && !Number.isInteger(originalYear)) {
+			throw new Error("Nieprawidłowy rok powstania");
 		}
 		return {
 			title: form.title.trim(),
-			ean: form.ean.trim(),
-			pageCount,
-			publicationYear,
-			publisherName: form.publisherName.trim(),
+			originalTitle: form.originalTitle.trim() || null,
+			description: form.description.trim() || null,
+			originalYear,
+			originalLanguageCode: form.originalLanguageCode,
 			authors: form.authorsText.trim(),
-			categoryIds: form.categoryIds,
+			genreIds: form.genreIds,
 		};
 	}
 
@@ -201,49 +170,63 @@ export function CatalogAdmin({
 	return (
 		<div className="mt-4 space-y-8">
 			<div className="overflow-x-auto border border-stone-200 bg-white">
-				<table className="w-full min-w-[40rem] text-left text-sm">
+				<table className="w-full min-w-160 text-left text-sm">
 					<thead className="border-stone-200 border-b bg-stone-50 text-stone-500 text-xs uppercase tracking-wide">
 						<tr>
 							<th className="px-3 py-2 font-medium">Tytuł</th>
-							<th className="px-3 py-2 font-medium">EAN</th>
-							<th className="px-3 py-2 font-medium">Wydawca</th>
+							<th className="px-3 py-2 font-medium">Język</th>
+							<th className="px-3 py-2 font-medium">Wydania</th>
 							<th className="px-3 py-2 font-medium">Egz.</th>
 							<th className="px-3 py-2 font-medium" />
 						</tr>
 					</thead>
 					<tbody className="divide-y divide-stone-200">
-						{books.map((book) => (
+						{works.map((work) => (
 							<tr
-								className={selectedId === book.id ? "bg-teal-50/50" : undefined}
-								key={book.id}
+								className={selectedId === work.id ? "bg-teal-50/50" : undefined}
+								key={work.id}
 							>
 								<td className="px-3 py-2">
-									<p className="font-medium text-stone-900">{book.title}</p>
+									<p className="font-medium text-stone-900">{work.title}</p>
+									{work.originalTitle ? (
+										<p className="text-stone-500 text-xs italic">
+											{work.originalTitle}
+										</p>
+									) : null}
 									<p className="text-stone-500 text-xs">
-										{book.authors
-											.map((a) => `${a.lastName} ${a.firstName}`)
-											.join(", ")}{" "}
-										· {book.publicationYear}
+										{work.authors.length > 0
+											? work.authors
+													.map((a) => `${a.lastName} ${a.firstName}`)
+													.join(", ")
+											: "Autor nieznany"}
+										{work.originalYear !== null
+											? ` · ${work.originalYear}`
+											: ""}
 									</p>
 								</td>
-								<td className="px-3 py-2 font-mono text-stone-700 text-xs">
-									{book.ean}
+								<td className="px-3 py-2 text-stone-700">
+									{work.originalLanguage.name}
 								</td>
 								<td className="px-3 py-2 text-stone-700">
-									{book.publisher.name}
+									{work.editionsCount}
 								</td>
-								<td className="px-3 py-2 text-stone-700">{book.copiesCount}</td>
+								<td className="px-3 py-2 text-stone-700">{work.copiesCount}</td>
 								<td className="px-3 py-2">
 									<button
 										className="text-teal-800 text-xs hover:underline"
 										onClick={() => {
 											setMode("edit");
-											setSelectedId(book.id);
+											setSelectedId(work.id);
 											setMessage(null);
 											setError(null);
 											router.replace(
-												`/librarian?tab=catalog&bookId=${book.id}`,
+												`/librarian?tab=catalog&workId=${work.id}`,
 											);
+											// The form sits below a long table.
+											formSectionRef.current?.scrollIntoView({
+												behavior: "smooth",
+												block: "start",
+											});
 										}}
 										type="button"
 									>
@@ -254,17 +237,17 @@ export function CatalogAdmin({
 						))}
 					</tbody>
 				</table>
-				{books.length === 0 ? (
-					<p className="px-4 py-3 text-sm text-stone-500">Brak książek.</p>
+				{works.length === 0 ? (
+					<p className="px-4 py-3 text-sm text-stone-500">Brak pozycji.</p>
 				) : null}
 			</div>
 
 			{tableFooter ? <div className="mt-4">{tableFooter}</div> : null}
 
-			<section className="border-stone-200 border-t pt-6">
+			<section className="border-stone-200 border-t pt-6" ref={formSectionRef}>
 				<div className="mb-4 flex flex-wrap items-center gap-3">
 					<h2 className="font-medium text-stone-900">
-						{mode === "create" ? "Dodaj książkę" : "Edytuj książkę"}
+						{mode === "create" ? "Dodaj pozycję" : "Edytuj pozycję"}
 					</h2>
 					{mode === "edit" ? (
 						<button
@@ -279,7 +262,7 @@ export function CatalogAdmin({
 							}}
 							type="button"
 						>
-							Nowa książka
+							Nowa pozycja
 						</button>
 					) : null}
 				</div>
@@ -303,9 +286,9 @@ export function CatalogAdmin({
 							const data = parseForm();
 							setMessage(null);
 							if (mode === "create") {
-								createBook.mutate(data);
+								createWork.mutate(data);
 							} else if (selectedId) {
-								updateBook.mutate({ id: selectedId, ...data });
+								updateWork.mutate({ id: selectedId, ...data });
 							}
 						} catch (err) {
 							setError(err instanceof Error ? err.message : "Błąd formularza");
@@ -323,49 +306,61 @@ export function CatalogAdmin({
 							value={form.title}
 						/>
 					</label>
-					<label className="block">
-						<span className={labelClassName}>EAN</span>
-						<input
-							className={inputClassName}
-							onChange={(e) => setForm((f) => ({ ...f, ean: e.target.value }))}
-							required
-							value={form.ean}
-						/>
-					</label>
-					<label className="block">
-						<span className={labelClassName}>Wydawnictwo</span>
+					<label className="block sm:col-span-2">
+						<span className={labelClassName}>Tytuł oryginału</span>
 						<input
 							className={inputClassName}
 							onChange={(e) =>
-								setForm((f) => ({ ...f, publisherName: e.target.value }))
+								setForm((f) => ({ ...f, originalTitle: e.target.value }))
 							}
-							required
-							value={form.publisherName}
+							placeholder="opcjonalnie, gdy różni się od tytułu"
+							value={form.originalTitle}
 						/>
 					</label>
 					<label className="block">
-						<span className={labelClassName}>Liczba stron</span>
+						<span className={labelClassName}>Rok powstania</span>
 						<input
 							className={inputClassName}
-							min={1}
 							onChange={(e) =>
-								setForm((f) => ({ ...f, pageCount: e.target.value }))
+								setForm((f) => ({ ...f, originalYear: e.target.value }))
 							}
-							required
+							placeholder="opcjonalnie"
 							type="number"
-							value={form.pageCount}
+							value={form.originalYear}
 						/>
 					</label>
 					<label className="block">
-						<span className={labelClassName}>Rok wydania</span>
-						<input
+						<span className={labelClassName}>Język oryginału</span>
+						<select
 							className={inputClassName}
 							onChange={(e) =>
-								setForm((f) => ({ ...f, publicationYear: e.target.value }))
+								setForm((f) => ({
+									...f,
+									originalLanguageCode: e.target.value,
+								}))
 							}
 							required
-							type="number"
-							value={form.publicationYear}
+							value={form.originalLanguageCode}
+						>
+							{languages.map((language) => (
+								<option key={language.code} value={language.code}>
+									{language.name}
+								</option>
+							))}
+						</select>
+					</label>
+
+					<label className="block sm:col-span-2">
+						<span className={labelClassName}>Opis</span>
+						<textarea
+							className={inputClassName}
+							maxLength={5000}
+							onChange={(e) =>
+								setForm((f) => ({ ...f, description: e.target.value }))
+							}
+							placeholder="opcjonalnie"
+							rows={4}
+							value={form.description}
 						/>
 					</label>
 
@@ -377,33 +372,33 @@ export function CatalogAdmin({
 								setForm((f) => ({ ...f, authorsText: e.target.value }))
 							}
 							placeholder="Kowalski Jan, Nowak Anna"
-							required
 							value={form.authorsText}
 						/>
 						<span className="mt-1 block text-stone-500 text-xs">
-							Format: Nazwisko Imię, kolejni autorzy po przecinku
+							Format: Nazwisko Imię, kolejni autorzy po przecinku; puste pole —
+							autor nieznany
 						</span>
 					</label>
 
 					<fieldset className="sm:col-span-2">
-						<legend className={labelClassName}>Kategorie</legend>
+						<legend className={labelClassName}>Gatunki</legend>
 						<div className="mt-1 flex flex-wrap gap-3">
-							{categories.map((category) => (
+							{genres.map((genre) => (
 								<label
 									className="flex items-center gap-2 text-sm text-stone-800"
-									key={category.id}
+									key={genre.id}
 								>
 									<input
-										checked={form.categoryIds.includes(category.id)}
+										checked={form.genreIds.includes(genre.id)}
 										onChange={() =>
 											setForm((f) => ({
 												...f,
-												categoryIds: toggleId(f.categoryIds, category.id),
+												genreIds: toggleId(f.genreIds, genre.id),
 											}))
 										}
 										type="checkbox"
 									/>
-									{category.name}
+									{genre.name}
 								</label>
 							))}
 						</div>
@@ -412,10 +407,10 @@ export function CatalogAdmin({
 					<div className="sm:col-span-2">
 						<button
 							className="rounded-md bg-stone-900 px-4 py-2 font-medium text-sm text-white transition hover:bg-teal-800 disabled:opacity-50"
-							disabled={createBook.isPending || updateBook.isPending}
+							disabled={createWork.isPending || updateWork.isPending}
 							type="submit"
 						>
-							{mode === "create" ? "Dodaj książkę" : "Zapisz zmiany"}
+							{mode === "create" ? "Dodaj pozycję" : "Zapisz zmiany"}
 						</button>
 						{selectedId && mode === "edit" ? (
 							<>
@@ -427,19 +422,19 @@ export function CatalogAdmin({
 								</Link>
 								<button
 									className="ml-3 rounded-md border border-stone-300 bg-white px-3 py-2 text-red-800 text-sm transition hover:border-red-700 disabled:opacity-50"
-									disabled={deleteBook.isPending}
+									disabled={deleteWork.isPending}
 									onClick={() => {
 										if (
 											window.confirm(
-												`Usunąć książkę „${form.title}”? Tej operacji nie można cofnąć.`,
+												`Usunąć pozycję „${form.title}”? Tej operacji nie można cofnąć.`,
 											)
 										) {
-											deleteBook.mutate({ bookId: selectedId });
+											deleteWork.mutate({ workId: selectedId });
 										}
 									}}
 									type="button"
 								>
-									Usuń książkę
+									Usuń pozycję
 								</button>
 							</>
 						) : null}
@@ -448,119 +443,20 @@ export function CatalogAdmin({
 			</section>
 
 			{mode === "edit" && selectedId ? (
-				<section className="border-stone-200 border-t pt-6">
-					<h2 className="font-medium text-stone-900">Egzemplarze</h2>
-					{bookQuery.isLoading ? (
-						<p className="mt-2 text-sm text-stone-500">Ładowanie…</p>
-					) : null}
-					{bookQuery.data ? (
-						<>
-							<div className="mt-3 overflow-x-auto border border-stone-200 bg-white">
-								<table className="w-full min-w-[28rem] text-left text-sm">
-									<thead className="border-stone-200 border-b bg-stone-50 text-stone-500 text-xs uppercase tracking-wide">
-										<tr>
-											<th className="px-3 py-2 font-medium">Nr inwentarzowy</th>
-											<th className="px-3 py-2 font-medium">Status</th>
-											<th className="px-3 py-2 font-medium">Zmiana statusu</th>
-											<th className="px-3 py-2 font-medium" />
-										</tr>
-									</thead>
-									<tbody className="divide-y divide-stone-200">
-										{bookQuery.data.copies.map((copy) => (
-											<tr key={copy.id}>
-												<td className="px-3 py-2 font-mono text-stone-800">
-													{copy.inventoryNo}
-												</td>
-												<td className="px-3 py-2 text-stone-700">
-													{copy.status}
-												</td>
-												<td className="px-3 py-2">
-													{copy.status === "LOANED" ? (
-														<span className="text-stone-400 text-xs">
-															tylko przez zwrot
-														</span>
-													) : (
-														<select
-															className="rounded-md border border-stone-300 bg-white px-2 py-1 text-xs"
-															defaultValue={copy.status}
-															disabled={updateCopyStatus.isPending}
-															onChange={(e) => {
-																const status = e.target.value as
-																	| "AVAILABLE"
-																	| "LOST"
-																	| "MAINTENANCE";
-																if (status === copy.status) return;
-																updateCopyStatus.mutate({
-																	copyId: copy.id,
-																	status,
-																});
-															}}
-														>
-															<option value="AVAILABLE">AVAILABLE</option>
-															<option value="LOST">LOST</option>
-															<option value="MAINTENANCE">MAINTENANCE</option>
-														</select>
-													)}
-												</td>
-												<td className="px-3 py-2">
-													<button
-														className="text-red-800 text-xs hover:underline disabled:opacity-50"
-														disabled={deleteCopy.isPending}
-														onClick={() => {
-															if (
-																window.confirm(
-																	`Usunąć egzemplarz ${copy.inventoryNo}?`,
-																)
-															) {
-																deleteCopy.mutate({ copyId: copy.id });
-															}
-														}}
-														type="button"
-													>
-														Usuń
-													</button>
-												</td>
-											</tr>
-										))}
-									</tbody>
-								</table>
-								{bookQuery.data.copies.length === 0 ? (
-									<p className="px-4 py-3 text-sm text-stone-500">
-										Brak egzemplarzy.
-									</p>
-								) : null}
-							</div>
-
-							<form
-								className="mt-4 flex flex-wrap items-end gap-3"
-								onSubmit={(event) => {
-									event.preventDefault();
-									addCopy.mutate({
-										bookId: selectedId,
-										inventoryNo: inventoryNo.trim(),
-									});
-								}}
-							>
-								<label className="min-w-[12rem] flex-1">
-									<span className={labelClassName}>Nowy nr inwentarzowy</span>
-									<input
-										className={inputClassName}
-										onChange={(e) => setInventoryNo(e.target.value)}
-										required
-										value={inventoryNo}
-									/>
-								</label>
-								<button
-									className="rounded-md border border-stone-300 bg-white px-4 py-2 text-sm text-stone-800 transition hover:border-teal-700 hover:text-teal-800 disabled:opacity-50"
-									disabled={addCopy.isPending}
-									type="submit"
-								>
-									Dodaj egzemplarz
-								</button>
-							</form>
-						</>
-					) : null}
-				</section>
+				workQuery.data ? (
+					<EditionAdmin
+						editions={workQuery.data.editions}
+						key={selectedId}
+						languages={languages}
+						onChanged={refresh}
+						selectedEditionId={
+							selectedId === selectedWorkId ? selectedEditionId : undefined
+						}
+						workId={selectedId}
+					/>
+				) : workQuery.isLoading ? (
+					<p className="text-sm text-stone-500">Ładowanie…</p>
+				) : null
 			) : null}
 		</div>
 	);

@@ -21,8 +21,9 @@ const COUNTS = {
 	members: 250,
 	authors: 400,
 	publishers: 50,
-	categories: 20,
-	books: 2000,
+	genres: 20,
+	works: 800,
+	maxEditionsPerWork: 4,
 	reservations: 60,
 } as const;
 
@@ -149,7 +150,7 @@ const PUBLISHER_NAMES = [
 	"Onepress",
 ];
 
-const CATEGORY_NAMES = [
+const GENRE_NAMES = [
 	"Powieść",
 	"Kryminał",
 	"Fantastyka",
@@ -171,6 +172,180 @@ const CATEGORY_NAMES = [
 	"Filozofia",
 	"Informatyka",
 ];
+
+/** Słownik krajów: kody ISO 3166-1 alpha-2. */
+const COUNTRIES = [
+	{ code: "PL", name: "Polska" },
+	{ code: "GB", name: "Wielka Brytania" },
+	{ code: "US", name: "Stany Zjednoczone" },
+	{ code: "DE", name: "Niemcy" },
+	{ code: "AT", name: "Austria" },
+	{ code: "FR", name: "Francja" },
+	{ code: "BE", name: "Belgia" },
+	{ code: "RU", name: "Rosja" },
+	{ code: "UA", name: "Ukraina" },
+	{ code: "ES", name: "Hiszpania" },
+	{ code: "AR", name: "Argentyna" },
+	{ code: "IT", name: "Włochy" },
+	{ code: "CZ", name: "Czechy" },
+	{ code: "SE", name: "Szwecja" },
+	{ code: "NO", name: "Norwegia" },
+	{ code: "JP", name: "Japonia" },
+	{ code: "CA", name: "Kanada" },
+	{ code: "IE", name: "Irlandia" },
+] as const;
+
+/** Słownik języków: kody ISO 639-1. */
+const LANGUAGES = [
+	{ code: "pl", name: "polski" },
+	{ code: "en", name: "angielski" },
+	{ code: "de", name: "niemiecki" },
+	{ code: "fr", name: "francuski" },
+	{ code: "ru", name: "rosyjski" },
+	{ code: "uk", name: "ukraiński" },
+	{ code: "es", name: "hiszpański" },
+	{ code: "it", name: "włoski" },
+	{ code: "cs", name: "czeski" },
+	{ code: "sv", name: "szwedzki" },
+	{ code: "no", name: "norweski" },
+	{ code: "ja", name: "japoński" },
+] as const;
+
+type LanguageCode = (typeof LANGUAGES)[number]["code"];
+type CountryCode = (typeof COUNTRIES)[number]["code"];
+
+/** Kraj pochodzenia autora piszącego w danym języku. */
+const COUNTRIES_BY_LANGUAGE: Record<LanguageCode, readonly CountryCode[]> = {
+	pl: ["PL"],
+	en: ["GB", "US", "CA", "IE"],
+	de: ["DE", "AT"],
+	fr: ["FR", "BE"],
+	ru: ["RU"],
+	uk: ["UA"],
+	es: ["ES", "AR"],
+	it: ["IT"],
+	cs: ["CZ"],
+	sv: ["SE"],
+	no: ["NO"],
+	ja: ["JP"],
+};
+
+/** Słowa do budowy tytułów oryginalnych przekładów: [przymiotniki, rzeczowniki]. */
+const ORIGINAL_TITLE_WORDS: Record<
+	Exclude<LanguageCode, "pl">,
+	readonly [readonly string[], readonly string[]]
+> = {
+	en: [
+		["The Silent", "The Lost", "The Last", "The Hidden", "The Golden"],
+		["Garden", "Bridge", "House", "Key", "Shadow", "City"],
+	],
+	de: [
+		["Der stille", "Der letzte", "Der verborgene", "Der goldene"],
+		["Garten", "Wald", "Schlüssel", "Schatten", "Traum"],
+	],
+	fr: [
+		["Le jardin", "La maison", "Le pont", "La clé", "L'ombre"],
+		["perdu", "oublié", "secret", "silencieux", "doré"],
+	],
+	ru: [
+		["Тихий", "Последний", "Забытый", "Золотой"],
+		["сад", "дом", "мост", "ключ", "город"],
+	],
+	uk: [
+		["Тихий", "Останній", "Забутий", "Золотий"],
+		["сад", "дім", "міст", "ключ", "ліс"],
+	],
+	es: [
+		["El jardín", "La casa", "El puente", "La llave", "La sombra"],
+		["perdido", "olvidado", "secreto", "dorado"],
+	],
+	it: [
+		["Il giardino", "La casa", "Il ponte", "La chiave", "L'ombra"],
+		["perduto", "segreto", "dorato", "dimenticato"],
+	],
+	cs: [
+		["Tichá", "Poslední", "Ztracená", "Zlatá"],
+		["zahrada", "cesta", "řeka", "noc"],
+	],
+	sv: [
+		["Den tysta", "Den sista", "Den gömda", "Den gyllene"],
+		["trädgården", "bron", "nyckeln", "skuggan"],
+	],
+	no: [
+		["Den stille", "Den siste", "Den skjulte", "Den gylne"],
+		["hagen", "broen", "nøkkelen", "skyggen"],
+	],
+	ja: [
+		["Shizuka na", "Saigo no", "Kakureta", "Kin'iro no"],
+		["niwa", "hashi", "ie", "kage", "yume"],
+	],
+};
+
+const DESCRIPTION_TEMPLATES = [
+	(noun: string) =>
+		`Wielowątkowa opowieść, w której ${noun} staje się świadkiem losów kilku pokoleń jednej rodziny.`,
+	(noun: string) =>
+		`Kameralna historia o pamięci, stracie i powrotach. Motywem przewodnim jest ${noun}.`,
+	(noun: string) =>
+		`Trzymająca w napięciu fabuła, w której ${noun} skrywa tajemnicę sprzed lat.`,
+	(noun: string) =>
+		`Zbiór obserwacji i refleksji, dla których punktem wyjścia jest ${noun}.`,
+	(noun: string) =>
+		`Książka o dorastaniu i wyborach, które zmieniają wszystko — a ${noun} jest ich cichym tłem.`,
+] as const;
+
+const POLISH_CITIES = [
+	"Warszawa",
+	"Kraków",
+	"Wrocław",
+	"Poznań",
+	"Gdańsk",
+	"Łódź",
+	"Lublin",
+	"Katowice",
+] as const;
+
+/** Pierwsze dwie cyfry kodów pocztowych miast, żeby adresy były wiarygodne. */
+const POSTAL_PREFIXES: Record<(typeof POLISH_CITIES)[number], string[]> = {
+	Warszawa: ["00", "01", "02", "03", "04"],
+	Kraków: ["30", "31"],
+	Wrocław: ["50", "51", "52", "53", "54"],
+	Poznań: ["60", "61"],
+	Gdańsk: ["80"],
+	Łódź: ["90", "91", "92", "93", "94"],
+	Lublin: ["20"],
+	Katowice: ["40"],
+};
+
+const STREET_NAMES = [
+	"ul. Długa",
+	"ul. Krótka",
+	"ul. Lipowa",
+	"ul. Polna",
+	"ul. Leśna",
+	"ul. Słoneczna",
+	"ul. Ogrodowa",
+	"ul. Kościuszki",
+	"ul. Mickiewicza",
+	"ul. Sienkiewicza",
+	"ul. Słowackiego",
+	"ul. Kwiatowa",
+	"ul. Szkolna",
+	"ul. Parkowa",
+	"al. Niepodległości",
+	"al. Wojska Polskiego",
+	"pl. Wolności",
+] as const;
+
+/** Wydawnictwa zagraniczne (kraj, miasto) — uzupełniają polskie z PUBLISHER_NAMES. */
+const FOREIGN_PUBLISHERS = [
+	{ name: "Penguin Books", countryCode: "GB", city: "Londyn" },
+	{ name: "Gallimard", countryCode: "FR", city: "Paryż" },
+	{ name: "Suhrkamp", countryCode: "DE", city: "Berlin" },
+	{ name: "Anagrama", countryCode: "ES", city: "Barcelona" },
+	{ name: "Einaudi", countryCode: "IT", city: "Turyn" },
+	{ name: "Bonnier", countryCode: "SE", city: "Sztokholm" },
+] as const;
 
 const TITLE_ADJECTIVES = [
 	"Cichy",
@@ -263,6 +438,22 @@ function pickN<T>(rng: () => number, items: readonly T[], n: number): T[] {
 	return result;
 }
 
+/** Polski adres: ulica z numerem (czasem z lokalem), kod zgodny z miastem. */
+function randomPolishAddress(
+	rng: () => number,
+	city: (typeof POLISH_CITIES)[number] = pick(rng, POLISH_CITIES),
+) {
+	const building = 1 + Math.floor(rng() * 120);
+	const flat = rng() < 0.6 ? `/${1 + Math.floor(rng() * 60)}` : "";
+	const prefix = pick(rng, POSTAL_PREFIXES[city]);
+	const suffix = String(Math.floor(rng() * 1000)).padStart(3, "0");
+	return {
+		street: `${pick(rng, STREET_NAMES)} ${building}${flat}`,
+		postalCode: `${prefix}-${suffix}`,
+		city: city as string,
+	};
+}
+
 function daysAgo(rng: () => number, minDays: number, maxDays: number): Date {
 	const days = minDays + Math.floor(rng() * (maxDays - minDays + 1));
 	const d = new Date();
@@ -275,6 +466,17 @@ function addDays(date: Date, days: number): Date {
 	const d = new Date(date);
 	d.setDate(d.getDate() + days);
 	return d;
+}
+
+/** "Prószyński i S-ka" -> "proszynskiiska" — do generowania adresów www/e-mail. */
+function slugify(text: string): string {
+	return text
+		.normalize("NFD")
+		.replace(/[\u0300-\u036f]/g, "")
+		.replace(/ł/g, "l")
+		.replace(/Ł/g, "L")
+		.toLowerCase()
+		.replace(/[^a-z0-9]/g, "");
 }
 
 function padEan(n: number): string {
@@ -304,12 +506,16 @@ async function wipe() {
 	await prisma.loan.deleteMany();
 	await prisma.reservation.deleteMany();
 	await prisma.copy.deleteMany();
-	await prisma.bookCategory.deleteMany();
-	await prisma.bookAuthor.deleteMany();
-	await prisma.book.deleteMany();
+	await prisma.edition.deleteMany();
+	await prisma.workGenre.deleteMany();
+	await prisma.authorGenre.deleteMany();
+	await prisma.workAuthor.deleteMany();
+	await prisma.work.deleteMany();
 	await prisma.author.deleteMany();
 	await prisma.publisher.deleteMany();
-	await prisma.category.deleteMany();
+	await prisma.genre.deleteMany();
+	await prisma.country.deleteMany();
+	await prisma.language.deleteMany();
 	await prisma.session.deleteMany();
 	await prisma.account.deleteMany();
 	await prisma.verification.deleteMany();
@@ -327,6 +533,9 @@ async function seedUsers(passwordHash: string) {
 		lastName: string;
 		phone: string;
 		pesel: string;
+		street: string;
+		postalCode: string;
+		city: string;
 		role: "LIBRARIAN" | "MEMBER";
 		isActive: boolean;
 	}[] = [];
@@ -351,6 +560,7 @@ async function seedUsers(passwordHash: string) {
 			lastName,
 			phone: `+48500${String(100000 + i).slice(0, 6)}`,
 			pesel: peselForIndex(i),
+			...randomPolishAddress(rng),
 			role: "LIBRARIAN",
 			isActive: true,
 		});
@@ -376,6 +586,7 @@ async function seedUsers(passwordHash: string) {
 			lastName,
 			phone: `+48501${String(100000 + i).slice(0, 6)}`,
 			pesel: peselForIndex(COUNTS.librarians + i),
+			...randomPolishAddress(rng),
 			role: "MEMBER",
 			isActive: true,
 		});
@@ -398,123 +609,216 @@ async function seedUsers(passwordHash: string) {
 	return users.filter((u) => u.role === "MEMBER").map((u) => u.id);
 }
 
+async function seedDictionaries() {
+	await prisma.country.createMany({
+		data: [...COUNTRIES],
+		skipDuplicates: true,
+	});
+	await prisma.language.createMany({
+		data: [...LANGUAGES],
+		skipDuplicates: true,
+	});
+}
+
 async function seedCatalog() {
 	const rng = createRng(42);
 
-	const authors = Array.from({ length: COUNTS.authors }, () => ({
-		id: randomUUID(),
-		firstName: pick(rng, FIRST_NAMES),
-		lastName: pick(rng, LAST_NAMES),
-	}));
-	await createManyBatched("authors", authors, (batch) =>
-		prisma.author.createMany({ data: batch }),
-	);
-
-	const publishers = PUBLISHER_NAMES.slice(0, COUNTS.publishers).map(
-		(name) => ({
+	// Większość autorów pisze po polsku; pozostali po angielsku lub w innym języku.
+	const authors = Array.from({ length: COUNTS.authors }, () => {
+		const roll = rng();
+		const writingLanguage: LanguageCode =
+			roll < 0.65
+				? "pl"
+				: roll < 0.8
+					? "en"
+					: pick(rng, LANGUAGES.slice(2)).code;
+		return {
 			id: randomUUID(),
-			name,
+			firstName: pick(rng, FIRST_NAMES),
+			lastName: pick(rng, LAST_NAMES),
+			countryCode:
+				rng() < 0.9 ? pick(rng, COUNTRIES_BY_LANGUAGE[writingLanguage]) : null,
+			birthYear: rng() < 0.85 ? 1780 + Math.floor(rng() * 221) : null,
+			writingLanguage,
+		};
+	});
+	await createManyBatched("authors", authors, (batch) =>
+		prisma.author.createMany({
+			data: batch.map(({ writingLanguage: _, ...author }) => author),
 		}),
 	);
+
+	const publishers = [
+		...PUBLISHER_NAMES.slice(
+			0,
+			COUNTS.publishers - FOREIGN_PUBLISHERS.length,
+		).map((name) => ({
+			name,
+			countryCode: "PL" as CountryCode,
+			...randomPolishAddress(rng),
+		})),
+		...FOREIGN_PUBLISHERS,
+	].map((publisher) => {
+		const slug = slugify(publisher.name);
+		return {
+			id: randomUUID(),
+			...publisher,
+			// Domena .example (RFC 2606) — nie wskazuje prawdziwych serwisów.
+			email: rng() < 0.8 ? `kontakt@${slug}.example` : null,
+			website: rng() < 0.9 ? `https://www.${slug}.example` : null,
+		};
+	});
 	await createManyBatched("publishers", publishers, (batch) =>
 		prisma.publisher.createMany({ data: batch }),
 	);
 
-	const categories = CATEGORY_NAMES.slice(0, COUNTS.categories).map((name) => ({
+	const genres = GENRE_NAMES.slice(0, COUNTS.genres).map((name) => ({
 		id: randomUUID(),
 		name,
 	}));
-	await createManyBatched("categories", categories, (batch) =>
-		prisma.category.createMany({ data: batch }),
+	await createManyBatched("genres", genres, (batch) =>
+		prisma.genre.createMany({ data: batch }),
 	);
 
-	const books: {
+	const works: {
 		id: string;
 		title: string;
-		ean: string;
-		pageCount: number;
-		publicationYear: number;
-		publisherId: string;
+		originalTitle: string | null;
+		description: string | null;
+		originalYear: number | null;
+		originalLanguageCode: LanguageCode;
 	}[] = [];
-	const bookAuthors: {
+	const workAuthors: {
 		id: string;
-		bookId: string;
+		workId: string;
 		authorId: string;
 		authorOrder: number;
 	}[] = [];
-	const bookCategories: { bookId: string; categoryId: string }[] = [];
+	const workGenres: { workId: string; genreId: string }[] = [];
+	const authorGenreKeys = new Set<string>();
+	const editions: {
+		id: string;
+		workId: string;
+		ean: string;
+		pageCount: number;
+		publicationYear: number;
+		languageCode: LanguageCode;
+		format: "HARDCOVER" | "PAPERBACK";
+		publisherId: string;
+	}[] = [];
 	const copies: {
 		id: string;
-		bookId: string;
+		editionId: string;
 		inventoryNo: string;
 		status: "AVAILABLE" | "LOST" | "MAINTENANCE";
 	}[] = [];
 
+	let eanSeq = 1;
 	let inventorySeq = 1;
 
-	for (let i = 1; i <= COUNTS.books; i++) {
-		const bookId = randomUUID();
+	for (let i = 1; i <= COUNTS.works; i++) {
+		const workId = randomUUID();
 		const adj = pick(rng, TITLE_ADJECTIVES);
 		const noun = pick(rng, TITLE_NOUNS);
 		const suffix = rng() < 0.4 ? ` ${pick(rng, TITLE_SUFFIXES)}` : "";
-		const publisher = pick(rng, publishers);
+		const originalYear = rng() < 0.9 ? 1800 + Math.floor(rng() * 220) : null;
 
-		books.push({
-			id: bookId,
-			title: `${adj} ${noun}${suffix}`,
-			ean: padEan(i),
-			pageCount: 120 + Math.floor(rng() * 680),
-			publicationYear: 1980 + Math.floor(rng() * 46),
-			publisherId: publisher.id,
-		});
-
+		// Język oryginału wynika z języka pierwszego autora.
 		const authorCount = 1 + Math.floor(rng() * 3);
 		const chosenAuthors = pickN(rng, authors, authorCount);
+		const originalLanguageCode = chosenAuthors[0]?.writingLanguage ?? "pl";
+
+		let originalTitle: string | null = null;
+		if (originalLanguageCode !== "pl") {
+			const [first, second] = ORIGINAL_TITLE_WORDS[originalLanguageCode];
+			originalTitle = `${pick(rng, first)} ${pick(rng, second)}`;
+		}
+
+		works.push({
+			id: workId,
+			title: `${adj} ${noun}${suffix}`,
+			originalTitle,
+			description: rng() < 0.75 ? pick(rng, DESCRIPTION_TEMPLATES)(noun) : null,
+			originalYear,
+			originalLanguageCode,
+		});
+
 		chosenAuthors.forEach((author, order) => {
-			bookAuthors.push({
+			workAuthors.push({
 				id: randomUUID(),
-				bookId,
+				workId,
 				authorId: author.id,
 				authorOrder: order + 1,
 			});
 		});
 
-		const categoryCount = 1 + Math.floor(rng() * 2);
-		for (const category of pickN(rng, categories, categoryCount)) {
-			bookCategories.push({ bookId, categoryId: category.id });
+		const genreCount = 1 + Math.floor(rng() * 2);
+		for (const genre of pickN(rng, genres, genreCount)) {
+			workGenres.push({ workId, genreId: genre.id });
+			// Gatunki autora to gatunki jego utworów.
+			for (const author of chosenAuthors) {
+				authorGenreKeys.add(`${author.id}|${genre.id}`);
+			}
 		}
 
-		const copyCount = 1 + Math.floor(rng() * 4);
-		for (let c = 0; c < copyCount; c++) {
-			const roll = rng();
-			let status: "AVAILABLE" | "LOST" | "MAINTENANCE" = "AVAILABLE";
-			if (roll < 0.02) status = "LOST";
-			else if (roll < 0.04) status = "MAINTENANCE";
-
-			copies.push({
-				id: randomUUID(),
-				bookId,
-				inventoryNo: `INV-${String(inventorySeq).padStart(6, "0")}`,
-				status,
+		const minYear = Math.max(originalYear ?? 1950, 1950);
+		const editionCount = 1 + Math.floor(rng() * COUNTS.maxEditionsPerWork);
+		for (let e = 0; e < editionCount; e++) {
+			const editionId = randomUUID();
+			editions.push({
+				id: editionId,
+				workId,
+				ean: padEan(eanSeq),
+				pageCount: 120 + Math.floor(rng() * 680),
+				publicationYear: minYear + Math.floor(rng() * (2026 - minYear + 1)),
+				languageCode: rng() < 0.8 ? "pl" : originalLanguageCode,
+				format: rng() < 0.6 ? "PAPERBACK" : "HARDCOVER",
+				publisherId: pick(rng, publishers).id,
 			});
-			inventorySeq += 1;
+			eanSeq += 1;
+
+			const copyCount = 1 + Math.floor(rng() * 4);
+			for (let c = 0; c < copyCount; c++) {
+				const roll = rng();
+				let status: "AVAILABLE" | "LOST" | "MAINTENANCE" = "AVAILABLE";
+				if (roll < 0.02) status = "LOST";
+				else if (roll < 0.04) status = "MAINTENANCE";
+
+				copies.push({
+					id: randomUUID(),
+					editionId,
+					inventoryNo: `INV-${String(inventorySeq).padStart(6, "0")}`,
+					status,
+				});
+				inventorySeq += 1;
+			}
 		}
 	}
 
-	await createManyBatched("books", books, (batch) =>
-		prisma.book.createMany({ data: batch }),
+	await createManyBatched("works", works, (batch) =>
+		prisma.work.createMany({ data: batch }),
 	);
-	await createManyBatched("bookAuthors", bookAuthors, (batch) =>
-		prisma.bookAuthor.createMany({ data: batch }),
+	await createManyBatched("workAuthors", workAuthors, (batch) =>
+		prisma.workAuthor.createMany({ data: batch }),
 	);
-	await createManyBatched("bookCategories", bookCategories, (batch) =>
-		prisma.bookCategory.createMany({ data: batch }),
+	await createManyBatched("workGenres", workGenres, (batch) =>
+		prisma.workGenre.createMany({ data: batch }),
+	);
+	const authorGenres = [...authorGenreKeys].map((key) => {
+		const [authorId = "", genreId = ""] = key.split("|");
+		return { authorId, genreId };
+	});
+	await createManyBatched("authorGenres", authorGenres, (batch) =>
+		prisma.authorGenre.createMany({ data: batch }),
+	);
+	await createManyBatched("editions", editions, (batch) =>
+		prisma.edition.createMany({ data: batch }),
 	);
 	await createManyBatched("copies", copies, (batch) =>
 		prisma.copy.createMany({ data: batch }),
 	);
 
-	return { books, copies };
+	return { works, editions, copies };
 }
 
 async function seedLoans(
@@ -613,55 +917,45 @@ async function seedLoans(
 		prisma.loan.createMany({ data: batch }),
 	);
 
-	const loanedIds = [...loanedCopyIds];
-	for (let i = 0; i < loanedIds.length; i += BATCH) {
-		const batch = loanedIds.slice(i, i + BATCH);
-		await prisma.copy.updateMany({
-			where: { id: { in: batch } },
-			data: { status: "LOANED" },
-		});
-	}
-
 	return { loanCount: loans.length, activeCount: loanedCopyIds.size };
 }
 
 async function seedReservations(
 	memberIds: string[],
-	books: { id: string }[],
-	copies: { id: string; bookId: string; status: string }[],
+	works: { id: string }[],
+	copies: { id: string; status: string; edition: { workId: string } }[],
 ) {
 	const rng = createRng(7);
-	const availableByBook = new Map<string, number>();
+	const availableByWork = new Map<string, number>();
 	for (const copy of copies) {
 		if (copy.status !== "AVAILABLE") continue;
-		availableByBook.set(
-			copy.bookId,
-			(availableByBook.get(copy.bookId) ?? 0) + 1,
-		);
+		const { workId } = copy.edition;
+		availableByWork.set(workId, (availableByWork.get(workId) ?? 0) + 1);
 	}
 
-	// Books with no AVAILABLE copies after loans are ideal for PENDING reservations.
-	const fullyLoanedBookIds = books
-		.map((b) => b.id)
-		.filter((id) => (availableByBook.get(id) ?? 0) === 0);
+	// Works with no AVAILABLE copies after loans are ideal for PENDING reservations.
+	const fullyLoanedWorkIds = works
+		.map((w) => w.id)
+		.filter((id) => (availableByWork.get(id) ?? 0) === 0);
 
 	const pool =
-		fullyLoanedBookIds.length >= 10
-			? fullyLoanedBookIds
-			: books.map((b) => b.id);
+		fullyLoanedWorkIds.length >= 10
+			? fullyLoanedWorkIds
+			: works.map((w) => w.id);
 
 	const reservations: {
 		id: string;
-		bookId: string;
+		workId: string;
 		userId: string;
 		status: "PENDING" | "FULFILLED" | "CANCELLED";
 		createdAt: Date;
+		closedAt: Date | null;
 	}[] = [];
 	const pendingPairs = new Set<string>();
 
 	for (let i = 0; i < COUNTS.reservations; i++) {
 		const userId = pick(rng, memberIds);
-		const bookId = pick(rng, pool);
+		const workId = pick(rng, pool);
 		const roll = rng();
 		let status: "PENDING" | "FULFILLED" | "CANCELLED";
 		if (roll < 0.45) status = "PENDING";
@@ -669,7 +963,7 @@ async function seedReservations(
 		else status = "CANCELLED";
 
 		if (status === "PENDING") {
-			const key = `${userId}:${bookId}`;
+			const key = `${userId}:${workId}`;
 			if (pendingPairs.has(key)) {
 				status = "CANCELLED";
 			} else {
@@ -677,12 +971,22 @@ async function seedReservations(
 			}
 		}
 
+		const createdAt = daysAgo(rng, 1, 120);
+		// Zamknięta rezerwacja: do 14 dni po złożeniu, nie później niż dziś.
+		let closedAt: Date | null = null;
+		if (status !== "PENDING") {
+			const closed = new Date(createdAt);
+			closed.setDate(closed.getDate() + Math.floor(rng() * 15));
+			closedAt = closed > new Date() ? new Date() : closed;
+		}
+
 		reservations.push({
 			id: randomUUID(),
-			bookId,
+			workId,
 			userId,
 			status,
-			createdAt: daysAgo(rng, 1, 120),
+			createdAt,
+			closedAt,
 		});
 	}
 
@@ -703,24 +1007,28 @@ async function main() {
 	console.log("Hashing password…");
 	const passwordHash = await hashPassword(PASSWORD);
 
+	console.log("Seeding dictionaries…");
+	await seedDictionaries();
+
 	console.log("Seeding users…");
 	const memberIds = await seedUsers(passwordHash);
 
 	console.log("Seeding catalog…");
-	const { books, copies } = await seedCatalog();
+	const { works, editions, copies } = await seedCatalog();
 
 	console.log("Seeding loans…");
 	const { loanCount, activeCount } = await seedLoans(memberIds, copies);
 
-	// Refresh copy statuses from DB for reservation eligibility.
+	// Copies on loan keep status AVAILABLE, so drop them for reservation eligibility.
 	const copiesAfterLoans = await prisma.copy.findMany({
-		select: { id: true, bookId: true, status: true },
+		where: { loans: { none: { returnedAt: null } } },
+		select: { id: true, status: true, edition: { select: { workId: true } } },
 	});
 
 	console.log("Seeding reservations…");
 	const reservationCount = await seedReservations(
 		memberIds,
-		books,
+		works,
 		copiesAfterLoans,
 	);
 
@@ -732,8 +1040,12 @@ async function main() {
 	console.log(`  Password:    ${PASSWORD}`);
 	console.log(`  Authors:     ${COUNTS.authors}`);
 	console.log(`  Publishers:  ${COUNTS.publishers}`);
-	console.log(`  Categories:  ${COUNTS.categories}`);
-	console.log(`  Books:       ${books.length}`);
+	console.log(`  Genres:      ${COUNTS.genres}`);
+	console.log(
+		`  Countries:   ${COUNTRIES.length}, languages: ${LANGUAGES.length}`,
+	);
+	console.log(`  Works:       ${works.length}`);
+	console.log(`  Editions:    ${editions.length}`);
 	console.log(`  Copies:      ${copies.length}`);
 	console.log(`  Loans:       ${loanCount} (${activeCount} active)`);
 	console.log(`  Reservations: ${reservationCount}`);

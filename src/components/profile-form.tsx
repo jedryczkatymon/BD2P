@@ -3,6 +3,10 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
+import {
+	AddressFields,
+	type AddressFormValue,
+} from "~/components/address-fields";
 import { api } from "~/trpc/react";
 
 type ProfileFormProps = {
@@ -12,6 +16,9 @@ type ProfileFormProps = {
 		lastName: string;
 		phone: string | null;
 		pesel: string;
+		street: string;
+		postalCode: string;
+		city: string;
 		role: string;
 	};
 };
@@ -34,6 +41,11 @@ export function ProfileForm({ user }: ProfileFormProps) {
 	const [firstName, setFirstName] = useState(user.firstName);
 	const [lastName, setLastName] = useState(user.lastName);
 	const [phone, setPhone] = useState(user.phone ?? "");
+	const [address, setAddress] = useState<AddressFormValue>({
+		street: user.street,
+		postalCode: user.postalCode,
+		city: user.city,
+	});
 	const [success, setSuccess] = useState(false);
 
 	const updateProfile = api.user.updateProfile.useMutation({
@@ -53,6 +65,9 @@ export function ProfileForm({ user }: ProfileFormProps) {
 			firstName,
 			lastName,
 			phone,
+			street: address.street.trim(),
+			postalCode: address.postalCode,
+			city: address.city.trim(),
 		});
 	}
 
@@ -115,6 +130,17 @@ export function ProfileForm({ user }: ProfileFormProps) {
 					<p className={readonlyValueClassName}>{roleLabel(user.role)}</p>
 				</div>
 			</div>
+
+			<AddressFields
+				className="max-w-2xl"
+				idPrefix="profile"
+				inputClassName={inputClassName}
+				labelClassName={`${labelClassName} mb-1 block`}
+				onChange={setAddress}
+				postalCodeMode="pl"
+				required
+				value={address}
+			/>
 
 			{updateProfile.error && (
 				<p className="text-red-700 text-sm" role="alert">

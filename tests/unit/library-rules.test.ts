@@ -1,4 +1,3 @@
-import { TRPCError } from "@trpc/server";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -60,13 +59,9 @@ describe("parseAuthorsText", () => {
 		]);
 	});
 
-	it("rzuca BAD_REQUEST dla pustego tekstu", () => {
-		expect(() => parseAuthorsText("  , ")).toThrow(TRPCError);
-		try {
-			parseAuthorsText("");
-		} catch (error) {
-			expect((error as TRPCError).code).toBe("BAD_REQUEST");
-		}
+	it("zwraca pustą listę dla pustego tekstu (autor nieznany)", () => {
+		expect(parseAuthorsText("")).toEqual([]);
+		expect(parseAuthorsText("  , ")).toEqual([]);
 	});
 
 	it("rzuca błąd dla autora bez imienia lub nazwiska", () => {

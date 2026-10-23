@@ -15,9 +15,9 @@ enum Role {
   MEMBER
 }
 
+/// Technical condition of a copy. Whether it is on loan is derived from Loan (returnedAt IS NULL).
 enum CopyStatus {
   AVAILABLE
-  LOANED
   LOST
   MAINTENANCE
 }
@@ -28,25 +28,34 @@ enum ReservationStatus {
   CANCELLED
 }
 
+enum BookFormat {
+  HARDCOVER
+  PAPERBACK
+}
+
 /// App user: Better Auth identity fields + library domain fields.
 /// Passwords live on Account.password (credential provider), not on User.
 /// `name` is required by Better Auth and kept as a derived field: firstName + lastName.
 model User {
-  id            String    @id
+  id            String   @id
   name          String
   email         String
-  emailVerified Boolean   @default(false)
+  emailVerified Boolean  @default(false)
   image         String?
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @default(now()) @updatedAt
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @default(now()) @updatedAt
 
-  firstName String
-  lastName  String
-  phone     String?
+  firstName  String
+  lastName   String
+  phone      String?
+  /// Address: street and number in one field; Polish postal code NN-NNN (DB CHECK).
+  street     String
+  postalCode String
+  city       String
   /// Required, 11 digits, immutable after registration (enforced in app + DB CHECK).
-  pesel     String   @unique
-  role      Role     @default(MEMBER)
-  isActive  Boolean  @default(true)
+  pesel      String  @unique
+  role       Role    @default(MEMBER)
+  isActive   Boolean @default(true)
 
   sessions     Session[]
   accounts     Account[]
@@ -102,94 +111,157 @@ model Verification {
   @@map("verification")
 }
 
-model Author {
-  id        String   @id @default(cuid())
-  firstName String
-  lastName  String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+/// Country dictionary keyed by ISO 3166-1 alpha-2 code (e.g. "PL"). Read-only in the app, filled by seed.
+model Country {
+  code String @id
+  name String @unique
 
-  books BookAuthor[]
+  authors    Author[]
+  publishers Publisher[]
+}
+
+/// Language dictionary keyed by ISO 639-1 code (e.g. "pl"). Read-only in the app, filled by seed.
+model Language {
+  code String @id
+  name String @unique
+
+  works    Work[]
+  editions Edition[]
+}
+
+model Author {
+  id          String  @id @default(cuid())
+  firstName   String
+  lastName    String
+  /// Optional: authors created implicitly from the work form only know their name.
+  countryCode String?
+  birthYear   Int?
+
+  country Country?      @relation(fields: [countryCode], references: [code], onDelete: Restrict)
+  works   WorkAuthor[]
+  genres  AuthorGenre[]
+
+  @@index([countryCode])
 }
 
 model Publisher {
-  id        String   @id @default(cuid())
-  name      String   @unique
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id          String  @id @default(cuid())
+  name        String  @unique
+  countryCode String?
+  /// Optional address; street/postalCode require city, PL postal code format only for PL (DB CHECK).
+  street      String?
+  postalCode  String?
+  city        String?
+  email       String?
+  website     String?
 
-  books Book[]
+  country  Country?  @relation(fields: [countryCode], references: [code], onDelete: Restrict)
+  editions Edition[]
+
+  @@index([countryCode])
 }
 
-model Category {
-  id        String   @id @default(cuid())
-  name      String   @unique
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+model Genre {
+  id   String @id @default(cuid())
+  name String @unique
 
-  books BookCategory[]
+  works   WorkGenre[]
+  authors AuthorGenre[]
 }
 
-/// Bibliographic edition (not a physical item). Physical stock lives in Copy.
-model Book {
-  id              String   @id @default(cuid())
-  title           String
-  ean             String   @unique
-  pageCount       Int
-  publicationYear Int
-  publisherId     String
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+/// Bibliographic work (e.g. "Pan Tadeusz" by Adam Mickiewicz), independent of any edition.
+model Work {
+  id                   String  @id @default(cuid())
+  title                String
+  /// Title in the original language, when it differs from `title`.
+  originalTitle        String?
+  description          String?
+  /// Year the work was written / first published; unknown for some works.
+  originalYear         Int?
+  originalLanguageCode String
 
-  publisher    Publisher      @relation(fields: [publisherId], references: [id])
-  authors      BookAuthor[]
-  categories   BookCategory[]
-  copies       Copy[]
-  reservations Reservation[]
+  originalLanguage Language      @relation(fields: [originalLanguageCode], references: [code], onDelete: Restrict)
+  authors          WorkAuthor[]
+  genres           WorkGenre[]
+  editions         Edition[]
+  reservations     Reservation[]
 
-  @@index([publisherId])
   @@index([title])
+  @@index([originalLanguageCode])
 }
 
-/// Many-to-many Book ↔ Author with authorship order (1 = primary author).
-model BookAuthor {
+/// Many-to-many Work ↔ Author with authorship order (1 = primary author).
+model WorkAuthor {
   id          String @id @default(cuid())
-  bookId      String
+  workId      String
   authorId    String
   authorOrder Int
 
-  book   Book   @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  work   Work   @relation(fields: [workId], references: [id], onDelete: Cascade)
   author Author @relation(fields: [authorId], references: [id], onDelete: Cascade)
 
-  @@unique([bookId, authorId])
+  @@unique([workId, authorId])
   @@index([authorId])
 }
 
-/// Many-to-many Book ↔ Category.
-model BookCategory {
-  bookId     String
-  categoryId String
+/// Many-to-many Work ↔ Genre.
+model WorkGenre {
+  workId  String
+  genreId String
 
-  book     Book     @relation(fields: [bookId], references: [id], onDelete: Cascade)
-  category Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  work  Work  @relation(fields: [workId], references: [id], onDelete: Cascade)
+  genre Genre @relation(fields: [genreId], references: [id], onDelete: Cascade)
 
-  @@id([bookId, categoryId])
-  @@index([categoryId])
+  @@id([workId, genreId])
+  @@index([genreId])
+}
+
+/// Many-to-many Author ↔ Genre (genres the author writes in).
+model AuthorGenre {
+  authorId String
+  genreId  String
+
+  author Author @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  genre  Genre  @relation(fields: [genreId], references: [id], onDelete: Cascade)
+
+  @@id([authorId, genreId])
+  @@index([genreId])
+}
+
+/// Published edition of a Work (not a physical item). Physical stock lives in Copy.
+model Edition {
+  id              String     @id @default(cuid())
+  workId          String
+  ean             String     @unique
+  pageCount       Int
+  publicationYear Int
+  languageCode    String
+  format          BookFormat @default(PAPERBACK)
+  publisherId     String
+
+  work      Work      @relation(fields: [workId], references: [id], onDelete: Restrict)
+  language  Language  @relation(fields: [languageCode], references: [code], onDelete: Restrict)
+  publisher Publisher @relation(fields: [publisherId], references: [id])
+  copies    Copy[]
+
+  @@index([workId])
+  @@index([publisherId])
+  @@index([languageCode])
 }
 
 /// Physical library item that can be loaned.
+/// Loanable <=> status = AVAILABLE and no active Loan (not stored, to avoid redundancy).
 model Copy {
   id          String     @id @default(cuid())
-  bookId      String
+  editionId   String
   inventoryNo String     @unique
   status      CopyStatus @default(AVAILABLE)
   createdAt   DateTime   @default(now())
-  updatedAt   DateTime   @updatedAt
 
-  book  Book   @relation(fields: [bookId], references: [id], onDelete: Restrict)
-  loans Loan[]
+  edition Edition @relation(fields: [editionId], references: [id], onDelete: Restrict)
+  loans   Loan[]
 
-  @@index([bookId])
+  @@index([editionId])
   @@index([status])
 }
 
@@ -203,8 +275,6 @@ model Loan {
   loanedAt   DateTime  @default(now())
   dueAt      DateTime
   returnedAt DateTime?
-  createdAt  DateTime  @default(now())
-  updatedAt  DateTime  @updatedAt
 
   copy Copy @relation(fields: [copyId], references: [id], onDelete: Restrict)
   user User @relation(fields: [userId], references: [id], onDelete: Restrict)
@@ -214,18 +284,19 @@ model Loan {
   @@index([dueAt])
 }
 
-/// Queue reservation for a Book edition when no Copy is AVAILABLE.
+/// Queue reservation for a Work when no Copy of any of its editions is AVAILABLE.
 model Reservation {
   id        String            @id @default(cuid())
-  bookId    String
+  workId    String
   userId    String
   status    ReservationStatus @default(PENDING)
   createdAt DateTime          @default(now())
-  updatedAt DateTime          @updatedAt
+  /// Set when the reservation leaves PENDING (fulfilled or cancelled).
+  closedAt  DateTime?
 
-  book Book @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  work Work @relation(fields: [workId], references: [id], onDelete: Cascade)
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@index([bookId, status])
+  @@index([workId, status])
   @@index([userId, status])
 }

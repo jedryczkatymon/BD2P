@@ -27,7 +27,9 @@ describe("buildCatalogHref", () => {
 			q: "lalka prus",
 			authorId: "a1",
 			publisherId: "p1",
-			categoryId: "c1",
+			genreId: "c1",
+			languageCode: "en",
+			authorCountryCode: "GB",
 			availableOnly: true,
 		});
 		const params = new URL(href, "http://localhost").searchParams;
@@ -36,7 +38,9 @@ describe("buildCatalogHref", () => {
 		expect(params.get("q")).toBe("lalka prus");
 		expect(params.get("authorId")).toBe("a1");
 		expect(params.get("publisherId")).toBe("p1");
-		expect(params.get("categoryId")).toBe("c1");
+		expect(params.get("genreId")).toBe("c1");
+		expect(params.get("languageCode")).toBe("en");
+		expect(params.get("authorCountryCode")).toBe("GB");
 		expect(params.get("available")).toBe("1");
 	});
 
